@@ -1,0 +1,14 @@
+.DS_Store
+node_modules/
+dist/
+.vite/
+.env
+.env.local
+npm-debug.log*
+
+backend/node_modules/
+backend/.env
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

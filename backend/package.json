@@ -1,0 +1,20 @@
+{
+  "name": "wms-print-template-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "migrate": "node scripts/run-migration.js",
+    "test": "node --test tests/*.test.js",
+    "test:db": "RUN_DB_TESTS=1 node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "morgan": "^1.10.1",
+    "mysql2": "^3.16.0"
+  }
+}

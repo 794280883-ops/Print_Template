@@ -1,0 +1,75 @@
+import { request, toQuery } from "./request.js";
+
+export function listTemplates(filters = {}) {
+  return request(`/templates${toQuery(filters)}`);
+}
+
+export function getTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}`);
+}
+
+export function createTemplate(template) {
+  return request("/templates", {
+    method: "POST",
+    body: JSON.stringify(template),
+  });
+}
+
+export function updateTemplate(id, template) {
+  return request(`/templates/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(template),
+  });
+}
+
+export function publishTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}/publish`, { method: "POST" });
+}
+
+export function disableTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}/disable`, { method: "POST" });
+}
+
+export function copyTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}/copy`, { method: "POST" });
+}
+
+export function importTemplate(templateDsl) {
+  return request("/templates/import", {
+    method: "POST",
+    body: JSON.stringify(templateDsl),
+  });
+}
+
+export function exportTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}/export`);
+}
+
+export function listFields(templateType) {
+  return request(`/template/fields/${encodeURIComponent(String(templateType).toUpperCase())}`);
+}
+
+export function previewPrint(payload) {
+  return request("/print/preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function submitPrint(payload) {
+  return request("/print/submit", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listPrintLogs() {
+  return request("/print/logs");
+}
+
+export function generateAiTemplate(payload) {
+  return request("/ai/templates/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

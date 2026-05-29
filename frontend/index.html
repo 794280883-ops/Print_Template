@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WMS 打印模板中心</title>
+  </head>
+  <body>
+    <!-- ════ TOPBAR ════ -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <span class="brand-mark">R</span>
+            <span class="brand-text">RAINBOW</span>
+          </div>
+          <nav class="top-nav">
+            <span>首页</span>
+            <span>作业管理</span>
+            <span>库存中心</span>
+            <span class="active">系统配置</span>
+          </nav>
+        </div>
+        <div class="topbar-right">
+          <select class="topbar-inline-select" id="languageSwitcher" aria-label="选择语言">
+            <option value="zh-CN" selected>中文</option>
+            <option value="en">English</option>
+          </select>
+          <span class="topbar-divider" aria-hidden="true"></span>
+          <div class="top-user">王晓彤</div>
+        </div>
+      </header>
+    
+      <!-- ════ TABBAR ════ -->
+      <div class="tabbar">
+        <div class="tabbar-tabs" id="tabbarTabs">
+          <a class="nav-tab active" data-view="templates">模板列表</a>
+          <a class="nav-tab" data-view="designer">模板设计器</a>
+          <a class="nav-tab" data-view="standards">标准模板库</a>
+          <a class="nav-tab" data-view="fields">字段字典</a>
+          <a class="nav-tab" data-view="business">业务打印模拟</a>
+          <a class="nav-tab" data-view="logs">打印日志</a>
+        </div>
+        <div class="tabbar-meta">
+          <div class="tabbar-time">
+            <span id="timeDisplay">2026-05-26 10:30:00</span>
+          </div>
+          <div class="tabbar-location">JP[东京仓]</div>
+        </div>
+      </div>
+    
+      <!-- ════ MAIN CONTENT ════ -->
+      <main class="page-shell">
+    
+        <!-- ── View: 模板列表 ── -->
+        <section class="view-section active" id="view-templates"></section>
+    
+        <!-- ── View: 模板设计器 ── -->
+        <section class="view-section" id="view-designer"></section>
+    
+        <!-- ── View: 标准模板库 ── -->
+        <section class="view-section" id="view-standards"></section>
+    
+        <!-- ── View: 字段字典 ── -->
+        <section class="view-section" id="view-fields"></section>
+    
+        <!-- ── View: 业务打印模拟 ── -->
+        <section class="view-section" id="view-business"></section>
+    
+        <!-- ── View: 打印日志 ── -->
+        <section class="view-section" id="view-logs"></section>
+    
+      </main>
+    
+      <!-- ════ MODALS ════ -->
+      <div class="modal fade" id="genericModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="genericModalTitle"></h5>
+              <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="genericModalBody"></div>
+            <div class="modal-footer" id="genericModalFoot"></div>
+          </div>
+        </div>
+      </div>
+    
+      <!-- Large modal for preview / JSON -->
+      <div class="modal fade" id="largeModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-xl">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="largeModalTitle"></h5>
+              <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="largeModalBody"></div>
+            <div class="modal-footer" id="largeModalFoot"></div>
+          </div>
+        </div>
+      </div>
+    
+      <!-- Log modal (wider) -->
+      <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width:1160px">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="logModalTitle" style="font-size:14px;font-weight:600;"></h5>
+              <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body" id="logModalBody" style="padding:12px 18px 8px;"></div>
+            <div class="modal-footer" id="logModalFoot" style="padding:10px 18px 12px;"></div>
+          </div>
+        </div>
+      </div>
+    
+      <!-- ════ TOAST HOST ════ -->
+      <div class="toast-host" id="toastHost"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
