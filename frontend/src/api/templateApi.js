@@ -4,6 +4,14 @@ export function listTemplates(filters = {}) {
   return request(`/templates${toQuery(filters)}`);
 }
 
+export function listOperationLogs() {
+  return request("/templates/operation-logs");
+}
+
+export function recordDesignLog(id) {
+  return request(`/templates/${encodeURIComponent(id)}/design-log`, { method: "POST" });
+}
+
 export function getTemplate(id) {
   return request(`/templates/${encodeURIComponent(id)}`);
 }
@@ -19,6 +27,13 @@ export function updateTemplate(id, template) {
   return request(`/templates/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(template),
+  });
+}
+
+export function updateTemplateName(id, templateName) {
+  return request(`/templates/${encodeURIComponent(id)}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ templateName }),
   });
 }
 

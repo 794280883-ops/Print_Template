@@ -30,8 +30,16 @@ const dbConnection = await mysql.createConnection({
   multipleStatements: true,
 });
 
-const migration = await fs.readFile(path.join(root, "migrations", "001_init.sql"), "utf8");
-await dbConnection.query(migration);
+const migrationDir = path.join(root, "migrations");
+const migrationFiles = (await fs.readdir(migrationDir))
+  .filter((file) => file.endsWith(".sql"))
+  .sort((a, b) => a.localeCompare(b));
+
+for (const file of migrationFiles) {
+  const migration = await fs.readFile(path.join(migrationDir, file), "utf8");
+  await dbConnection.query(migration);
+  console.log(`Applied ${file}`);
+}
 await dbConnection.end();
 
 console.log(`Migration completed for database ${dbName}`);

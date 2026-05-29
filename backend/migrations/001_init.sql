@@ -112,17 +112,15 @@ VALUES
   ('LOCATION','column','列','integer','89',0,'货架列号，整数，表示该排在仓库中的列位置',40),
   ('LOCATION','level','层','string','B1',0,'货架层级标识，由字母+数字组成，如 A1、B2、C3',50),
   ('LOCATION','directionMark','方向标','string','↑',0,'方向指示符，↑ ↓ ← → 表示货架朝向或存取方向',60),
-  ('LOCATION','warehouseCode','仓库编码','string','JP01',0,'所属仓库编码，格式：国家代码+序号，如 JP01、US02',70),
-  ('LOCATION','areaCode','区域编码','string','A01',0,'库区编码，字母+数字格式，如 A01 表示 A 区 01 分区',80),
-  ('LOCATION','fullLocationName','完整库位','string','TZ-DD1801-004A',0,'完整库位名称，由前缀+排+列+层拼接而成的可读标识',90),
+  ('LOCATION','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',70),
+  ('LOCATION','areaCode','物理仓编码','string','JP01',0,'物理仓编码',80),
   ('CONTAINER','containerCode','容器编码','string','C2P0001',1,'容器唯一编码，前缀 C2P 表示二级包装容器，后跟流水号',10),
-  ('CONTAINER','containerType','容器类型','enum','INBOUND',0,'容器业务类型：INBOUND 入库 / TRANSFER 移库 / PICKING 拣货 / OUTBOUND 出库',20),
-  ('CONTAINER','appointmentTime','预约时间','datetime','2026-05-21 10:00',0,'容器预约到达或处理时间，格式 yyyy-MM-dd HH:mm',30),
-  ('CONTAINER','dispatchWarehouse','发货仓','string','JP01',0,'发货方仓库编码，容器来源仓库',40),
-  ('CONTAINER','receiptWarehouse','收货仓','string','US01',0,'收货方仓库编码，容器目标仓库',50),
-  ('CONTAINER','qty','数量','integer','12',0,'容器内商品总件数，整数，≥ 0',60),
-  ('CONTAINER','containerNo','容器序号','string','001',0,'容器在同批次中的序号，3 位零填充数字',70),
-  ('CONTAINER','createdTime','创建时间','date','2026-05-21',0,'容器创建日期，格式 yyyy-MM-dd',80);
+  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',20),
+  ('CONTAINER','areaCode','物理仓编码','string','JP01',0,'物理仓编码',30),
+  ('CONTAINER','purpose','用途','string','入库周转',0,'容器标签用途',40),
+  ('CONTAINER','usageScene','使用场景','string','入库收货',0,'容器标签适用的业务使用场景',50),
+  ('PRODUCT','productCode','商品编码','string','SKU-10001',1,'商品编码',10),
+  ('PRODUCT','customerProductCode','客户商品编码','string','CUST-SKU-10001',0,'客户商品编码',20);
 
 INSERT IGNORE INTO print_template
   (id, template_code, template_name, template_type, width_mm, height_mm, unit, dpi, version, status, is_default, remark, created_by, updated_by)
@@ -148,12 +146,12 @@ VALUES
   (2,'title_inbound','text',6,4,88,8,1,0,'static','CONTAINER INBOUND',NULL,16,1,'center','#111827','transparent',NULL,JSON_OBJECT()),
   (2,'container_code','text',8,14,58,10,2,0,'field',NULL,'containerCode',22,1,'left','#111827','transparent',NULL,JSON_OBJECT()),
   (2,'container_qr','qrcode',72,14,20,20,3,0,NULL,NULL,'containerCode',NULL,0,NULL,NULL,NULL,NULL,JSON_OBJECT()),
-  (2,'container_type','text',8,30,32,7,4,0,'field',NULL,'containerType',10,0,'left','#111827','transparent',NULL,JSON_OBJECT()),
-  (2,'container_time','text',8,39,55,6,5,0,'field',NULL,'appointmentTime',8,0,'left','#334155','transparent',NULL,JSON_OBJECT()),
+  (2,'container_warehouse','text',8,30,32,7,4,0,'field',NULL,'warehouseCode',10,0,'left','#111827','transparent',NULL,JSON_OBJECT()),
+  (2,'container_area','text',8,39,55,6,5,0,'field',NULL,'areaCode',8,0,'left','#334155','transparent',NULL,JSON_OBJECT()),
   (3,'picking_title','text',7,8,86,10,1,0,'static','PICKING CONTAINER',NULL,18,1,'center','#111827','transparent',NULL,JSON_OBJECT()),
   (3,'picking_code','text',12,28,76,14,2,0,'field',NULL,'containerCode',28,1,'center','#111827','transparent',NULL,JSON_OBJECT()),
   (3,'picking_barcode','barcode',12,48,76,22,3,0,NULL,NULL,'containerCode',NULL,0,NULL,NULL,NULL,NULL,JSON_OBJECT()),
-  (3,'picking_qty','text',12,78,38,10,4,0,'field',NULL,'qty',16,1,'left','#111827','transparent',NULL,JSON_OBJECT());
+  (3,'picking_purpose','text',12,78,38,10,4,0,'field',NULL,'purpose',16,1,'left','#111827','transparent',NULL,JSON_OBJECT());
 
 INSERT IGNORE INTO operation_log (module_name, action_name, target_type, target_id, target_name, before_json, after_json, operator)
 VALUES ('print_template','系统初始化','print_template',NULL,'预置模板',NULL,JSON_OBJECT('templateCount', 3),'Admin');

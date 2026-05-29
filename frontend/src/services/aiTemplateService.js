@@ -2,7 +2,14 @@ import { nowText } from "./timeService.js";
 
 export function parseAiPromptToTemplate(prompt, selectedType, uid) {
   const lower = String(prompt || "").toLowerCase();
-  const type = lower.includes("容器") || lower.includes("container") ? "CONTAINER" : lower.includes("库位") || lower.includes("location") ? "LOCATION" : selectedType;
+  const type = lower.includes("商品") || lower.includes("product") || lower.includes("sku")
+    ? "PRODUCT"
+    : lower.includes("容器") || lower.includes("container")
+      ? "CONTAINER"
+      : lower.includes("库位") || lower.includes("location")
+        ? "LOCATION"
+        : selectedType;
+  if (type === "PRODUCT") return createProductTemplateFromPrompt(prompt, uid);
   return type === "CONTAINER" ? createContainerTemplateFromPrompt(prompt, uid) : createLocationTemplateFromPrompt(prompt, uid);
 }
 
@@ -42,7 +49,8 @@ export function createContainerTemplateFromPrompt(prompt, uid) {
   const elements = [
     { id: uid("title"), type: "text", textKind: "static", text: "CONTAINER", x: 6, y: 4, width: 88, height: 8, fontSize: 16, bold: true, align: "center", color: "#111827", backgroundColor: "transparent" },
     { id: uid("code"), type: "text", textKind: "field", x: 8, y: 15, width: 62, height: 12, bindField: "containerCode", fontSize: big ? 26 : 22, bold: big, align: "left", color: black ? "#ffffff" : "#111827", backgroundColor: black ? "#111827" : "transparent" },
-    { id: uid("type"), type: "text", textKind: "field", x: 8, y: 32, width: 36, height: 7, bindField: "containerType", fontSize: 10, bold: false, align: "left", color: "#111827", backgroundColor: "transparent" },
+    { id: uid("warehouse"), type: "text", textKind: "field", x: 8, y: 32, width: 36, height: 7, bindField: "warehouseCode", fontSize: 10, bold: false, align: "left", color: "#111827", backgroundColor: "transparent" },
+    { id: uid("purpose"), type: "text", textKind: "field", x: 8, y: 40, width: 36, height: 6, bindField: "purpose", fontSize: 9, bold: false, align: "left", color: "#111827", backgroundColor: "transparent" },
   ];
   if (/二维码/.test(text) || !/条码/.test(text)) elements.push({ id: uid("qr"), type: "qrcode", x: 74, y: 16, width: 18, height: 18, bindField: "containerCode" });
   if (/条码/.test(text)) elements.push({ id: uid("bar"), type: "barcode", x: 8, y: 39, width: 55, height: 8, bindField: "containerCode" });
@@ -54,6 +62,33 @@ export function createContainerTemplateFromPrompt(prompt, uid) {
     templateType: "CONTAINER",
     areaWarehouseCodes: [],
     size: { width: 100, height: 50, unit: "mm", dpi: 203 },
+    version: "V0",
+    status: "draft",
+    isDefault: false,
+    remark: "AI mock 生成，需人工确认",
+    updatedAt: nowText(),
+    elements,
+    aiNotice: "AI 生成内容需人工确认后发布",
+  };
+}
+
+export function createProductTemplateFromPrompt(prompt, uid) {
+  const text = String(prompt || "");
+  const big = /大字|加粗/.test(text);
+  const elements = [
+    { id: uid("code"), type: "text", textKind: "field", x: 3, y: 8, width: 24, height: 10, bindField: "productCode", fontSize: big ? 18 : 16, bold: true, align: "center", color: "#111827", backgroundColor: "transparent" },
+    { id: uid("customer"), type: "text", textKind: "field", x: 3, y: 22, width: 24, height: 8, bindField: "customerProductCode", fontSize: 10, bold: false, align: "center", color: "#334155", backgroundColor: "transparent" },
+  ];
+  if (/二维码/.test(text) || !/条码/.test(text)) elements.push({ id: uid("qr"), type: "qrcode", x: 6, y: 36, width: 18, height: 18, bindField: "productCode" });
+  if (/条码/.test(text)) elements.push({ id: uid("bar"), type: "barcode", x: 3, y: 38, width: 24, height: 12, bindField: "productCode" });
+  return {
+    id: uid("tpl"),
+    dslVersion: "1.0",
+    templateCode: `TPL_AI_PRODUCT_${Date.now().toString().slice(-6)}`,
+    templateName: "商品标签-30x70mm-AI草稿",
+    templateType: "PRODUCT",
+    areaWarehouseCodes: [],
+    size: { width: 30, height: 70, unit: "mm", dpi: 203 },
     version: "V0",
     status: "draft",
     isDefault: false,

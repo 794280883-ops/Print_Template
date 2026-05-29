@@ -5,8 +5,16 @@ export async function listTemplates(req, res) {
   sendSuccess(res, await templateService.listTemplates(req.query));
 }
 
+export async function listOperationLogs(req, res) {
+  sendSuccess(res, await templateService.listOperationLogs());
+}
+
 export async function getTemplate(req, res) {
   sendSuccess(res, await templateService.getTemplate(req.params.id));
+}
+
+export async function recordDesignLog(req, res) {
+  sendSuccess(res, await templateService.recordDesignLog(req.params.id));
 }
 
 export async function createTemplate(req, res) {
@@ -15,6 +23,10 @@ export async function createTemplate(req, res) {
 
 export async function updateTemplate(req, res) {
   sendSuccess(res, await templateService.updateTemplate(req.params.id, req.body));
+}
+
+export async function updateTemplateName(req, res) {
+  sendSuccess(res, await templateService.updateTemplateName(req.params.id, req.body));
 }
 
 export async function publishTemplate(req, res) {

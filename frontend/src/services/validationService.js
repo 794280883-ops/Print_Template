@@ -7,10 +7,9 @@ export function validateTemplateDsl(templateDsl) {
   const template = templateDsl || {};
   const fieldList = FIELD_DICT[template.templateType] || [];
   const fieldCodes = new Set(fieldList.map((field) => field.code));
-  const requiredFields = new Set(fieldList.filter((field) => field.required).map((field) => field.code));
 
   if (!String(template.templateName || "").trim()) errors.push({ message: "模板名称为空" });
-  if (!["LOCATION", "CONTAINER"].includes(template.templateType)) errors.push({ message: "模板类型不在 LOCATION / CONTAINER 中" });
+  if (!["LOCATION", "CONTAINER", "PRODUCT"].includes(template.templateType)) errors.push({ message: "模板类型不在 LOCATION / CONTAINER / PRODUCT 中" });
   if (!template.size || Number(template.size.width) <= 0 || Number(template.size.height) <= 0) errors.push({ message: "尺寸宽高必须大于 0" });
   if (!Array.isArray(template.elements) || !template.elements.length) errors.push({ message: "画布内没有元素" });
 
@@ -23,7 +22,6 @@ export function validateTemplateDsl(templateDsl) {
     if (element.type === "text" && element.textKind === "field" && !element.bindField) errors.push({ message: "动态文本没有绑定字段", elementId: element.id });
     if (["qrcode", "barcode"].includes(element.type) && !element.bindField) errors.push({ message: `${element.type === "qrcode" ? "二维码" : "条码"}没有绑定字段`, elementId: element.id });
     if (element.bindField && !fieldCodes.has(element.bindField)) errors.push({ message: `字段 ${element.bindField} 不存在于当前模板类型字段字典`, elementId: element.id });
-    if (element.bindField && !requiredFields.has(element.bindField)) warnings.push({ message: `字段 ${element.bindField} 不是必填字段`, elementId: element.id });
 
     const x2 = Number(element.x) + Number(element.width);
     const y2 = Number(element.y) + Number(element.height);
@@ -40,7 +38,6 @@ export function validateTemplateDsl(templateDsl) {
     if (element.type === "text" && Number(element.fontSize || 0) < 6) tips.push({ message: "字体小于 6px", elementId: element.id });
   });
 
-  if (!template.areaWarehouseCodes || !template.areaWarehouseCodes.length) tips.push({ message: "模板没有设置默认区域仓" });
   if (!hasCode) tips.push({ message: "模板没有二维码或条码" });
   if (template.aiNotice) tips.push({ message: "AI 生成内容需人工确认后发布" });
   return { errors, warnings, tips, canPublish: errors.length === 0 };

@@ -38,8 +38,8 @@ export function createSeedTemplates(uid) {
         { id: "title_inbound", type: "text", textKind: "static", text: "CONTAINER INBOUND", x: 6, y: 4, width: 88, height: 8, fontSize: 16, bold: true, align: "center", color: "#111827", backgroundColor: "transparent" },
         { id: "container_code", type: "text", textKind: "field", x: 8, y: 14, width: 58, height: 10, bindField: "containerCode", fontSize: 22, bold: true, align: "left", color: "#111827", backgroundColor: "transparent" },
         { id: "container_qr", type: "qrcode", x: 72, y: 14, width: 20, height: 20, bindField: "containerCode" },
-        { id: "container_type", type: "text", textKind: "field", x: 8, y: 30, width: 32, height: 7, bindField: "containerType", fontSize: 10, bold: false, align: "left", color: "#111827", backgroundColor: "transparent" },
-        { id: "container_time", type: "text", textKind: "field", x: 8, y: 39, width: 55, height: 6, bindField: "appointmentTime", fontSize: 8, bold: false, align: "left", color: "#334155", backgroundColor: "transparent" },
+        { id: "container_warehouse", type: "text", textKind: "field", x: 8, y: 30, width: 32, height: 7, bindField: "warehouseCode", fontSize: 10, bold: false, align: "left", color: "#111827", backgroundColor: "transparent" },
+        { id: "container_area", type: "text", textKind: "field", x: 8, y: 39, width: 55, height: 6, bindField: "areaCode", fontSize: 8, bold: false, align: "left", color: "#334155", backgroundColor: "transparent" },
       ],
       logs: [],
     },
@@ -59,7 +59,7 @@ export function createSeedTemplates(uid) {
         { id: "picking_title", type: "text", textKind: "static", text: "PICKING CONTAINER", x: 7, y: 8, width: 86, height: 10, fontSize: 18, bold: true, align: "center", color: "#111827", backgroundColor: "transparent" },
         { id: "picking_code", type: "text", textKind: "field", x: 12, y: 28, width: 76, height: 14, bindField: "containerCode", fontSize: 28, bold: true, align: "center", color: "#111827", backgroundColor: "transparent" },
         { id: "picking_barcode", type: "barcode", x: 12, y: 48, width: 76, height: 22, bindField: "containerCode" },
-        { id: "picking_qty", type: "text", textKind: "field", x: 12, y: 78, width: 38, height: 10, bindField: "qty", fontSize: 16, bold: true, align: "left", color: "#111827", backgroundColor: "transparent" },
+        { id: "picking_purpose", type: "text", textKind: "field", x: 12, y: 78, width: 38, height: 10, bindField: "purpose", fontSize: 16, bold: true, align: "left", color: "#111827", backgroundColor: "transparent" },
       ],
       logs: [],
     },
@@ -76,8 +76,16 @@ export function locationRows() {
 
 export function containerRows() {
   return [
-    { containerCode: "C2P0001", containerType: "INBOUND", appointmentTime: "2026-05-21 10:00", dispatchWarehouse: "JP01", receiptWarehouse: "US01", qty: "12", containerNo: "001" },
-    { containerCode: "C2P0002", containerType: "TRANSFER", appointmentTime: "2026-05-21 13:30", dispatchWarehouse: "JP01", receiptWarehouse: "DE01", qty: "8", containerNo: "002" },
-    { containerCode: "PICK0099", containerType: "PICKING", appointmentTime: "2026-05-21 15:00", dispatchWarehouse: "US01", receiptWarehouse: "US01", qty: "31", containerNo: "099" },
+    { containerCode: "C2P0001", warehouseCode: "JP-TYO-01", areaCode: "JP01", purpose: "入库周转", usageScene: "入库收货" },
+    { containerCode: "C2P0002", warehouseCode: "JP-TYO-01", areaCode: "JP01", purpose: "调拨周转", usageScene: "跨仓调拨" },
+    { containerCode: "PICK0099", warehouseCode: "US-LAX-01", areaCode: "US01", purpose: "拣货周转", usageScene: "出库拣货" },
+  ];
+}
+
+export function productRows() {
+  return [
+    { productCode: "SKU-10001", customerProductCode: "CUST-SKU-10001" },
+    { productCode: "SKU-10002", customerProductCode: "CUST-SKU-10002" },
+    { productCode: "SKU-10003", customerProductCode: "CUST-SKU-10003" },
   ];
 }

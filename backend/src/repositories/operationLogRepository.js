@@ -15,3 +15,14 @@ export async function addOperationLog({ actionName, targetType = "print_template
     ],
   );
 }
+
+export async function listOperationLogs(limit = 200) {
+  const [rows] = await pool.query(
+    `SELECT id, module_name, action_name, target_type, target_id, target_name, operator, operated_at
+     FROM operation_log
+     ORDER BY operated_at DESC, id DESC
+     LIMIT ?`,
+    [Number(limit) || 200],
+  );
+  return rows;
+}

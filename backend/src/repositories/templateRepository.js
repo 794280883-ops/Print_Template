@@ -101,6 +101,11 @@ export async function updateTemplateStatus(id, status, version = null) {
   return getTemplateById(id);
 }
 
+export async function updateTemplateName(id, templateName) {
+  await pool.query("UPDATE print_template SET template_name = ?, updated_by = 'Admin' WHERE id = ?", [templateName, id]);
+  return getTemplateById(id);
+}
+
 async function replaceTemplateChildren(connection, templateId, template) {
   for (const code of template.areaWarehouseCodes) {
     await connection.query("INSERT INTO print_template_warehouse (template_id, warehouse_code) VALUES (?, ?)", [templateId, code]);

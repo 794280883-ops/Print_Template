@@ -8,10 +8,25 @@ export async function listTemplates(filters) {
   return templateRepository.listTemplates(filters);
 }
 
+export async function listOperationLogs() {
+  return operationLogRepository.listOperationLogs();
+}
+
 export async function getTemplate(id) {
   const template = await templateRepository.getTemplateById(id);
   if (!template) throw appError("模板不存在", 40400, 404);
   return template;
+}
+
+export async function recordDesignLog(id) {
+  const template = await getTemplate(id);
+  await operationLogRepository.addOperationLog({
+    actionName: "进入模板设计",
+    targetId: template.id,
+    targetName: template.templateName,
+    afterJson: { templateCode: template.templateCode, templateType: template.templateType },
+  });
+  return { id: template.id, templateCode: template.templateCode, templateName: template.templateName };
 }
 
 export async function createTemplate(input) {
@@ -29,6 +44,21 @@ export async function updateTemplate(id, input) {
   if (duplicated && Number(duplicated.id) !== Number(id)) throw appError("模板编码重复", 40001, 409);
   const updated = await templateRepository.replaceTemplate(id, template);
   await operationLogRepository.addOperationLog({ actionName: "保存草稿", targetId: updated.id, targetName: updated.templateName, afterJson: updated });
+  return updated;
+}
+
+export async function updateTemplateName(id, input) {
+  const before = await getTemplate(id);
+  const templateName = String(input.templateName || input.name || "").trim();
+  if (!templateName) throw appError("模板名称不能为空", 40000, 400);
+  const updated = await templateRepository.updateTemplateName(id, templateName);
+  await operationLogRepository.addOperationLog({
+    actionName: "编辑模板名称",
+    targetId: updated.id,
+    targetName: updated.templateName,
+    beforeJson: { templateName: before.templateName },
+    afterJson: { templateName: updated.templateName },
+  });
   return updated;
 }
 
