@@ -21,7 +21,7 @@ export const STATUS_CLASS = {
 };
 
 export const WAREHOUSES = [
-  { code: "JP-TYO-01", name: "东京仓" },
+  { code: "DE-BER-01", name: "德国仓" },
   { code: "US-LAX-01", name: "洛杉矶仓" },
   { code: "DE-FRA-01", name: "法兰克福仓" },
 ];

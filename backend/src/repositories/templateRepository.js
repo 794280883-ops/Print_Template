@@ -21,11 +21,24 @@ export async function listTemplates(filters = {}) {
     params.warehouse = filters.warehouse;
   }
 
-  const [rows] = await pool.query(
-    `SELECT * FROM print_template ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC, id DESC`,
+  const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  const page = Math.max(1, parseInt(filters.page, 10) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(filters.pageSize, 10) || 20));
+  const offset = (page - 1) * pageSize;
+
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM print_template ${whereClause}`,
     params,
   );
-  return Promise.all(rows.map((row) => getTemplateById(row.id)));
+
+  const [rows] = await pool.query(
+    `SELECT * FROM print_template ${whereClause} ORDER BY updated_at DESC, id DESC LIMIT :limit OFFSET :offset`,
+    { ...params, limit: pageSize, offset },
+  );
+
+  const templates = await Promise.all(rows.map((row) => getTemplateById(row.id)));
+  return { rows: templates, total, page, pageSize };
 }
 
 export async function getTemplateById(id, connection = pool) {

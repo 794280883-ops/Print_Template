@@ -60,6 +60,7 @@ export async function initWmsPrintTemplateApp() {
       let future = [];
       let clipboardElement = null;
       let filters = { name: "", type: "", status: "" };
+      let pagination = { page: 1, pageSize: 20, total: 0 };
       let businessTab = "LOCATION";
       let selectedFieldType = "LOCATION";
       let selectedBusinessRows = new Set();
@@ -102,8 +103,8 @@ export async function initWmsPrintTemplateApp() {
         loadError = "";
         render();
         try {
-          const [templates, printLogs, operationLogs, locationFields, containerFields, productFields] = await Promise.all([
-            listTemplates(filters),
+          const [templatesResult, printLogs, operationLogs, locationFields, containerFields, productFields] = await Promise.all([
+            listTemplates({ ...filters, page: pagination.page, pageSize: pagination.pageSize }),
             listPrintLogs(),
             listOperationLogs(),
             apiListFields("LOCATION"),
@@ -113,6 +114,8 @@ export async function initWmsPrintTemplateApp() {
           FIELD_DICT.LOCATION = locationFields;
           FIELD_DICT.CONTAINER = containerFields;
           FIELD_DICT.PRODUCT = productFields;
+          const templates = templatesResult.rows || templatesResult;
+          pagination.total = templatesResult.total || 0;
           state = { templates, printLogs: normalizePrintLogs(printLogs), appLogs: normalizeOperationLogs(operationLogs) };
           currentTemplateId = currentTemplateId && templates.some((template) => template.id === currentTemplateId)
             ? currentTemplateId
@@ -194,12 +197,7 @@ export async function initWmsPrintTemplateApp() {
       function renderTemplateListLegacy() {
         const root = document.getElementById("view-templates");
         if (renderLoadingOrError(root)) return;
-        const rows = state.templates.filter(t=>{
-          const byName = !filters.name||t.templateName.includes(filters.name);
-          const byType = !filters.type||t.templateType===filters.type;
-          const byStatus = !filters.status||t.status===filters.status;
-          return byName&&byType&&byStatus;
-        });
+        const rows = state.templates;
 
         root.innerHTML = `
           <div class="card-panel filter-panel">
@@ -238,7 +236,7 @@ export async function initWmsPrintTemplateApp() {
               <div class="toolbar-actions">
                 <button class="btn btn-primary-wms" id="newTemplateBtn">新增模板</button>
               </div>
-              <span class="section-meta">共 ${rows.length} 条</span>
+              <span class="section-meta">共 ${pagination.total} 条</span>
             </div>
             <div class="table-wrap">
               <table class="table align-middle">
@@ -254,7 +252,7 @@ export async function initWmsPrintTemplateApp() {
                 </tr></thead>
                 <tbody>${rows.map((t,i)=>`
                   <tr>
-                    <td class="text-center">${i+1}</td>
+                    <td class="text-center">${(pagination.page-1)*pagination.pageSize + i + 1}</td>
                     <td class="text-start"><span class="text-link action-link" data-act="design" data-id="${t.id}">${t.templateCode}</span></td>
                     <td class="text-start">${t.templateName}</td>
                     <td class="text-start">${TYPE_LABEL[t.templateType]||t.templateType}</td>
@@ -273,14 +271,41 @@ export async function initWmsPrintTemplateApp() {
                 `).join("")}</tbody>
               </table>
             </div>
+            ${renderPagination()}
           </div>`;
 
         bindTemplateListEvents();
       }
 
+      function renderPagination() {
+        const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
+        const page = pagination.page;
+        let pageLinks = "";
+        for (let i = 1; i <= totalPages; i++) {
+          if (totalPages <= 7 || i === 1 || i === totalPages || (i >= page - 1 && i <= page + 1)) {
+            pageLinks += `<button class="pagination-btn ${i === page ? "active" : ""}" data-page="${i}">${i}</button>`;
+          } else if (i === page - 2 || i === page + 2) {
+            pageLinks += `<span class="pagination-ellipsis">...</span>`;
+          }
+        }
+        return `
+          <div class="pagination-bar">
+            <div class="pagination-info">显示第 ${(page-1)*pagination.pageSize + 1}-${Math.min(page*pagination.pageSize, pagination.total)} 条，共 ${pagination.total} 条</div>
+            <div class="pagination-controls">
+              <button class="pagination-btn" data-page="${page-1}" ${page<=1?"disabled":""}>上一页</button>
+              ${pageLinks}
+              <button class="pagination-btn" data-page="${page+1}" ${page>=totalPages?"disabled":""}>下一页</button>
+              <span class="pagination-size-label">每页</span>
+              <input class="pagination-size-input" id="pageSizeInput" type="number" min="1" max="200" value="${pagination.pageSize}">
+              <span class="pagination-size-label">条</span>
+              <button class="pagination-btn" id="pageSizeApplyBtn">确定</button>
+            </div>
+          </div>`;
+      }
+
       function bindTemplateListEvents() {
         document.getElementById("newTemplateBtn").onclick = openNewTemplateModal;
-        document.getElementById("resetFilterBtn").onclick = ()=>{ filters={name:"",type:"",status:""}; setTimeout(()=>renderTemplateList(),0); };
+        document.getElementById("resetFilterBtn").onclick = ()=>{ filters={name:"",type:"",status:""}; pagination.page=1; setTimeout(()=>hydrateState(),0); };
 
         document.getElementById("filterForm").addEventListener("submit",e=>{
           e.preventDefault();
@@ -289,12 +314,46 @@ export async function initWmsPrintTemplateApp() {
             type: document.getElementById("filterType").value,
             status: document.getElementById("filterStatus").value
           };
+          pagination.page = 1;
           hydrateState();
         });
 
         document.querySelectorAll("[data-act]").forEach(el=>{
           el.onclick = ()=>handleTemplateAction(el.dataset.act, el.dataset.id).catch(error=>toast(`操作失败：${error.message}`));
         });
+
+        document.querySelectorAll(".pagination-btn").forEach(btn=>{
+          btn.onclick = ()=>{
+            const p = parseInt(btn.dataset.page, 10);
+            if (p >= 1 && p <= Math.ceil(pagination.total / pagination.pageSize)) {
+              pagination.page = p;
+              hydrateState();
+            }
+          };
+        });
+
+        const pageSizeInput = document.getElementById("pageSizeInput");
+        const pageSizeApplyBtn = document.getElementById("pageSizeApplyBtn");
+        if (pageSizeInput && pageSizeApplyBtn) {
+          const applyPageSize = ()=>{
+            let v = parseInt(pageSizeInput.value, 10);
+            if (isNaN(v) || v < 1) v = 1;
+            if (v > 200) v = 200;
+            pageSizeInput.value = v;
+            pagination.pageSize = v;
+            pagination.page = 1;
+            hydrateState();
+          };
+          pageSizeApplyBtn.onclick = applyPageSize;
+          pageSizeInput.addEventListener("keydown", (e)=>{
+            if (e.key === "Enter") { e.preventDefault(); applyPageSize(); }
+          });
+          pageSizeInput.addEventListener("blur", ()=>{
+            let v = parseInt(pageSizeInput.value, 10);
+            if (isNaN(v) || v < 1) v = pagination.pageSize;
+            pageSizeInput.value = v;
+          });
+        }
       }
 
       async function handleTemplateAction(action, id) {
