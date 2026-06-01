@@ -126,6 +126,18 @@ export async function exportTemplate(id) {
   };
 }
 
+export async function deleteTemplate(id) {
+  const template = await getTemplate(id);
+  await templateRepository.deleteTemplate(id);
+  await operationLogRepository.addOperationLog({
+    actionName: "删除模板",
+    targetId: template.id,
+    targetName: template.templateName,
+    beforeJson: template,
+  });
+  return { id: template.id, templateCode: template.templateCode, templateName: template.templateName };
+}
+
 async function ensureTemplateCodeUnique(templateCode) {
   if (!templateCode) throw appError("模板编码不能为空", 40000, 400);
   const duplicated = await templateRepository.getTemplateRowByCode(templateCode);

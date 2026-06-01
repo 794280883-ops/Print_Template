@@ -6,4 +6,5 @@ export const printRouter = Router();
 
 printRouter.post("/print/preview", asyncHandler(printController.previewPrint));
 printRouter.post("/print/submit", asyncHandler(printController.submitPrint));
+printRouter.post("/print/pdf", asyncHandler(printController.downloadPdf));
 printRouter.get("/print/logs", asyncHandler(printController.listPrintLogs));

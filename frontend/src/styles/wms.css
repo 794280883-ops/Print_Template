@@ -162,6 +162,13 @@
       background: #fff; border: 1px solid #d3dbe8; color: #49627f; cursor: pointer;
     }
     .btn-icon-wms:hover { background: #f7faff; color: #335b85; }
+    .btn-danger-wms { background: var(--wms-danger); border-color: var(--wms-danger); color: #fff; }
+    .btn-danger-wms:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
+
+    /* ── Confirm Modal ── */
+    .confirm-modal-body { text-align: center; padding: 10px 0; }
+    .confirm-icon { font-size: 40px; margin-bottom: 12px; }
+    .confirm-message { font-size: 15px; color: #33475b; margin: 0; line-height: 1.6; }
 
     /* ── Table ── */
     .table-wrap { overflow-x: auto; }
@@ -179,6 +186,8 @@
     .selection-cell .form-check-input { margin: 0; width: 16px; height: 16px; border-color: #b9c7d8; }
     .text-link, .action-link { color: var(--wms-blue); cursor: pointer; text-decoration: none; white-space: nowrap; }
     .action-link + .action-link { margin-left: 10px; }
+    .action-link.text-danger { color: var(--wms-danger); }
+    .action-link.text-danger:hover { color: #dc2626; text-decoration: underline; }
 
     /* ── Status Pills ── */
     .status-pill {

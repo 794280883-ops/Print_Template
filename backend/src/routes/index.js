@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { aiRouter } from "./ai.routes.js";
+import { businessDataRouter } from "./businessData.routes.js";
 import { fieldRouter } from "./field.routes.js";
 import { healthRouter } from "./health.routes.js";
 import { printRouter } from "./print.routes.js";
@@ -12,3 +13,4 @@ apiRouter.use(templateRouter);
 apiRouter.use(fieldRouter);
 apiRouter.use(printRouter);
 apiRouter.use(aiRouter);
+apiRouter.use(businessDataRouter);

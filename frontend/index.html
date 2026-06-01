@@ -37,7 +37,7 @@
           <a class="nav-tab" data-view="designer">模板设计器</a>
           <a class="nav-tab" data-view="standards">标准模板库</a>
           <a class="nav-tab" data-view="fields">字段字典</a>
-          <a class="nav-tab" data-view="logs">打印日志</a>
+          <a class="nav-tab" data-view="business">业务数据</a>
         </div>
         <div class="tabbar-meta">
           <div class="tabbar-time">
@@ -63,8 +63,10 @@
         <section class="view-section" id="view-fields"></section>
     
         <!-- ── View: 打印日志 ── -->
-        <section class="view-section" id="view-logs"></section>
-    
+
+        <!-- ── View: 业务数据 ── -->
+        <section class="view-section" id="view-business"></section>
+
       </main>
     
       <!-- ════ MODALS ════ -->
@@ -95,19 +97,6 @@
         </div>
       </div>
     
-      <!-- Log modal (wider) -->
-      <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width:1160px">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title" id="logModalTitle" style="font-size:14px;font-weight:600;"></h5>
-              <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="关闭"></button>
-            </div>
-            <div class="modal-body" id="logModalBody" style="padding:12px 18px 8px;"></div>
-            <div class="modal-footer" id="logModalFoot" style="padding:10px 18px 12px;"></div>
-          </div>
-        </div>
-      </div>
     
       <!-- ════ TOAST HOST ════ -->
       <div class="toast-host" id="toastHost"></div>

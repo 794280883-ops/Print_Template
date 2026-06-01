@@ -8,24 +8,30 @@ import {
   SUPPORTED_TYPES,
   TYPE_LABEL,
 } from '../data/constants.js';
-import { createSeedTemplates, locationRows, containerRows, productRows } from '../data/mockData.js';
+import { createSeedTemplates } from '../data/mockData.js';
 import {
   createTemplate as apiCreateTemplate,
   copyTemplate as apiCopyTemplate,
-  disableTemplate as apiDisableTemplate,
   exportTemplate as apiExportTemplate,
   generateAiTemplate,
   importTemplate as apiImportTemplate,
   listFields as apiListFields,
   listOperationLogs,
-  listPrintLogs,
   listTemplates,
   publishTemplate as apiPublishTemplate,
   recordDesignLog,
   updateTemplate,
   updateTemplateName,
-  submitPrint,
+  deleteTemplate as apiDeleteTemplate,
+  downloadPrintPdf,
 } from '../api/templateApi.js';
+import {
+  listBusinessData as apiListBusinessData,
+  getBusinessData as apiGetBusinessData,
+  createBusinessData as apiCreateBusinessData,
+  updateBusinessData as apiUpdateBusinessData,
+  deleteBusinessData as apiDeleteBusinessData,
+} from '../api/businessDataApi.js';
 import { sampleByType, fieldExists, toDsl, fromDsl } from '../services/templateDslService.js';
 import { validateTemplateDsl } from '../services/validationService.js';
 import { parseAiPromptToTemplate, createLocationTemplateFromPrompt, createContainerTemplateFromPrompt, createProductTemplateFromPrompt } from '../services/aiTemplateService.js';
@@ -33,8 +39,8 @@ import { TemplateList } from '../pages/TemplateList.js';
 import { TemplateDesigner } from '../pages/TemplateDesigner.js';
 import { StandardTemplates } from '../pages/StandardTemplates.js';
 import { FieldDictionary } from '../pages/FieldDictionary.js';
-import { BusinessPrintSimulation } from '../pages/BusinessPrintSimulation.js';
-import { PrintLogs } from '../pages/PrintLogs.js';
+import { BusinessData } from '../pages/BusinessData.js';
+
 
 export async function initWmsPrintTemplateApp() {
 
@@ -43,7 +49,6 @@ export async function initWmsPrintTemplateApp() {
       // ── Bootstrap modals ──
       const genericModal = new Modal(document.getElementById("genericModal"));
       const largeModal = new Modal(document.getElementById("largeModal"));
-      const logModalBs = new Modal(document.getElementById("logModal"));
 
       // ── State ──
       let state = defaultState();
@@ -65,6 +70,8 @@ export async function initWmsPrintTemplateApp() {
       let selectedFieldType = "LOCATION";
       let selectedBusinessRows = new Set();
       let aiDraft = null;
+      let businessDataState = { rows: [], total: 0 };
+      let businessDataFilters = { type: "LOCATION", keyword: "", page: 1, pageSize: 20 };
 
       // ── Helpers ──
       function uid(p) { return `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`; }
@@ -95,7 +102,7 @@ export async function initWmsPrintTemplateApp() {
       function addAppLog(action,target) { state.appLogs.unshift({time:nowText(),operator:"Admin",action,target}); }
 
       function defaultState() {
-        return { templates: [], printLogs: [], appLogs: [] };
+        return { templates: [], appLogs: [] };
       }
 
       async function hydrateState() {
@@ -103,9 +110,8 @@ export async function initWmsPrintTemplateApp() {
         loadError = "";
         render();
         try {
-          const [templatesResult, printLogs, operationLogs, locationFields, containerFields, productFields] = await Promise.all([
+          const [templatesResult, operationLogs, locationFields, containerFields, productFields] = await Promise.all([
             listTemplates({ ...filters, page: pagination.page, pageSize: pagination.pageSize }),
-            listPrintLogs(),
             listOperationLogs(),
             apiListFields("LOCATION"),
             apiListFields("CONTAINER"),
@@ -116,7 +122,7 @@ export async function initWmsPrintTemplateApp() {
           FIELD_DICT.PRODUCT = productFields;
           const templates = templatesResult.rows || templatesResult;
           pagination.total = templatesResult.total || 0;
-          state = { templates, printLogs: normalizePrintLogs(printLogs), appLogs: normalizeOperationLogs(operationLogs) };
+          state = { templates, appLogs: normalizeOperationLogs(operationLogs) };
           currentTemplateId = currentTemplateId && templates.some((template) => template.id === currentTemplateId)
             ? currentTemplateId
             : templates[0]?.id || null;
@@ -135,20 +141,6 @@ export async function initWmsPrintTemplateApp() {
       }
 
       function saveState() {}
-
-      function normalizePrintLogs(rows) {
-        return (rows || []).map((row) => ({
-          time: row.printed_at || row.time || "",
-          operator: row.operator || "Admin",
-          templateName: row.template_name || row.templateName || row.template_code || "-",
-          templateVersion: row.templateVersion || "-",
-          templateType: row.business_type || row.templateType || "-",
-          printMode: row.printMode || "API 打印",
-          printQty: row.printQty || 1,
-          status: row.print_status === "failed" ? "失败" : "成功",
-          bizCodes: row.business_no || row.bizCodes || "-",
-        }));
-      }
 
       function normalizeOperationLogs(rows) {
         return (rows || []).map((row) => ({
@@ -186,7 +178,6 @@ export async function initWmsPrintTemplateApp() {
         if (currentView==="standards") renderStandards();
         if (currentView==="fields") renderFields();
         if (currentView==="business") renderBusiness();
-        if (currentView==="logs") renderLogs();
       }
 
       // ══════════════════════════════════════
@@ -264,8 +255,7 @@ export async function initWmsPrintTemplateApp() {
                       <span class="action-link" data-act="print" data-id="${t.id}">打印</span>
                       <span class="action-link" data-act="copy" data-id="${t.id}">复制</span>
                       <span class="action-link" data-act="publish" data-id="${t.id}">发布</span>
-                      <span class="action-link" data-act="disable" data-id="${t.id}">${t.status==="disabled"?"启用":"停用"}</span>
-                      <span class="action-link" data-act="log" data-id="${t.id}">日志</span>
+                      <span class="action-link text-danger" data-act="delete" data-id="${t.id}">删除</span>
                     </td>
                   </tr>
                 `).join("")}</tbody>
@@ -369,13 +359,45 @@ export async function initWmsPrintTemplateApp() {
           saveState(); toast("已复制为草稿模板"); render();
         }
         if (action==="publish") publishTemplate(t);
-        if (action==="disable") {
-          const updated = await apiDisableTemplate(t.id);
-          Object.assign(t, updated);
-          addAppLog(t.status==="disabled"?"停用模板":"启用为草稿",t.templateName);
-          saveState(); render();
-        }
-        if (action==="log") openTemplateLogModal(t);
+        if (action==="delete") deleteTemplate(t);
+      }
+
+      async function deleteTemplate(t) {
+        showConfirmModal(
+          "确认删除",
+          `确定删除模板「${escHtml(t.templateName)}」？此操作不可恢复。`,
+          async () => {
+            try {
+              await apiDeleteTemplate(t.id);
+              state.templates = state.templates.filter(x => x.id !== t.id);
+              if (currentTemplateId === t.id) currentTemplateId = state.templates[0]?.id || null;
+              addAppLog("删除模板", t.templateName);
+              pagination.total = Math.max(0, pagination.total - 1);
+              toast("模板已删除");
+              render();
+            } catch (err) {
+              toast(`删除失败：${err.message}`);
+            }
+          }
+        );
+      }
+
+      function showConfirmModal(title, message, onConfirm) {
+        document.getElementById("genericModalTitle").textContent = title;
+        document.getElementById("genericModalBody").innerHTML = `
+          <div class="confirm-modal-body">
+            <div class="confirm-icon">⚠</div>
+            <p class="confirm-message">${message}</p>
+          </div>`;
+        document.getElementById("genericModalFoot").innerHTML = `
+          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-danger-wms" id="confirmDeleteBtn">确认删除</button>`;
+        genericModal.show();
+
+        document.getElementById("confirmDeleteBtn").onclick = async () => {
+          genericModal.hide();
+          await onConfirm();
+        };
       }
 
       async function enterTemplateDesigner(t) {
@@ -1026,20 +1048,6 @@ export async function initWmsPrintTemplateApp() {
         largeModal.show();
       }
 
-      function openTemplateLogModal(t) {
-        const logs = state.appLogs.filter(l=>l.target.includes(t.templateName)||l.target.includes(t.templateCode));
-        document.getElementById("logModalTitle").textContent = `操作日志 - ${t.templateName}`;
-        document.getElementById("logModalBody").innerHTML = `
-          <div class="table-wrap">
-            <table class="table align-middle">
-              <thead><tr><th class="text-center" style="width:56px">序号</th><th class="text-start">操作人</th><th class="text-start">操作详情</th><th class="text-start">操作时间</th></tr></thead>
-              <tbody>${logs.length?logs.map((l,i)=>`<tr><td class="text-center">${i+1}</td><td class="text-start">${l.operator}</td><td class="text-start">${l.action} - ${l.target}</td><td class="text-start">${l.time}</td></tr>`).join(""):`<tr><td colspan="4"><div class="empty-state">暂无该模板日志</div></td></tr>`}</tbody>
-            </table>
-          </div>`;
-        document.getElementById("logModalFoot").innerHTML = `<button class="btn btn-secondary-wms" data-bs-dismiss="modal">返回</button>`;
-        logModalBs.show();
-      }
-
       // ══════════════════════════════════════
       //  STANDARDS
       // ══════════════════════════════════════
@@ -1150,13 +1158,6 @@ export async function initWmsPrintTemplateApp() {
         return all?all.name:k;
       }
 
-      function businessRowsByType(type) {
-        if (type === "LOCATION") return locationRows();
-        if (type === "CONTAINER") return containerRows();
-        if (type === "PRODUCT") return productRows();
-        return [];
-      }
-
       function businessCodeKeyByType(type) {
         if (type === "LOCATION") return "locationCode";
         if (type === "CONTAINER") return "containerCode";
@@ -1164,62 +1165,241 @@ export async function initWmsPrintTemplateApp() {
         return "";
       }
 
-      function renderBusiness() { return BusinessPrintSimulation.renderBusiness(appContext); }
+      function renderBusiness() { return BusinessData.renderBusinessData(appContext); }
 
-      function renderBusinessLegacy() {
-        const data=businessRowsByType(businessTab);
-        const root=document.getElementById("view-business");
+      async function renderBusinessData() {
+        const root = document.getElementById("view-business");
+        const type = businessDataFilters.type;
+        const fields = FIELD_DICT[type] || [];
+
+        // Fetch data
+        try {
+          const result = await apiListBusinessData(type, {
+            keyword: businessDataFilters.keyword,
+            page: businessDataFilters.page,
+            pageSize: businessDataFilters.pageSize,
+          });
+          businessDataState = result || { rows: [], total: 0 };
+        } catch (err) {
+          businessDataState = { rows: [], total: 0 };
+          if (err.message && !err.message.includes("请求失败")) toast(`加载业务数据失败：${err.message}`);
+        }
+
+        const { rows, total } = businessDataState;
+        const totalPages = Math.max(1, Math.ceil(total / businessDataFilters.pageSize));
+        const currentPage = businessDataFilters.page;
+
         root.innerHTML = `
+          <div class="card-panel filter-panel">
+            <div class="panel-body">
+              <div class="row align-items-end">
+                <div class="col-auto">
+                  <div class="inline-tabs" style="margin-bottom:0">
+                    <div class="inline-tab ${type==="LOCATION"?"active":""}" data-biz-tab="LOCATION">库位管理</div>
+                    <div class="inline-tab ${type==="CONTAINER"?"active":""}" data-biz-tab="CONTAINER">容器管理</div>
+                    <div class="inline-tab ${type==="PRODUCT"?"active":""}" data-biz-tab="PRODUCT">商品管理</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <input class="form-control" id="bizKeyword" placeholder="搜索编码..." value="${escAttr(businessDataFilters.keyword)}">
+                </div>
+                <div class="col-auto">
+                  <button class="btn btn-primary-wms" id="bizQueryBtn">查询</button>
+                  <button class="btn btn-secondary-wms" id="bizResetBtn">重置</button>
+                </div>
+                <div class="col text-end">
+                  <button class="btn btn-primary-wms" id="bizAddBtn">新增</button>
+                  <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="card-panel">
             <div class="section-head">
-              <div class="inline-tabs">
-                <div class="inline-tab ${businessTab==="LOCATION"?"active":""}" data-biz-tab="LOCATION">库位管理</div>
-                <div class="inline-tab ${businessTab==="CONTAINER"?"active":""}" data-biz-tab="CONTAINER">容器管理</div>
-                <div class="inline-tab ${businessTab==="PRODUCT"?"active":""}" data-biz-tab="PRODUCT">商品管理</div>
-              </div>
-              <div class="toolbar-actions">
-                <button class="btn btn-primary-wms" id="templatePrintBtn">模板打印</button>
-              </div>
+              <span style="font-weight:700">${TYPE_LABEL[type]||type} 业务数据</span>
+              <span class="section-meta">共 ${total} 条</span>
             </div>
             <div class="table-wrap">
               <table class="table align-middle">
-                <thead><tr><th class="selection-cell"><input id="checkAllBiz" type="checkbox"></th>${Object.keys(data[0]).map(k=>`<th class="text-start">${bizHeader(k)}</th>`).join("")}</tr></thead>
-                <tbody>${data.map((r,i)=>`<tr>
-                  <td class="selection-cell"><input class="bizCheck" type="checkbox" value="${i}" ${selectedBusinessRows.has(String(i))?"checked":""}></td>
-                  ${Object.values(r).map(v=>`<td class="text-start">${v}</td>`).join("")}
-                </tr>`).join("")}</tbody>
+                <thead><tr>
+                  ${["编码", ...fields.map(f=>f.name), "操作"].map(h=>`<th class="text-start">${h}</th>`).join("")}
+                </tr></thead>
+                <tbody>${rows.length ? rows.map(r=>`<tr>
+                  <td class="text-start" style="font-weight:600">${escHtml(r.businessCode)}</td>
+                  ${fields.map(f=>`<td class="text-start">${escHtml(r.fields[f.code] ?? "-")}</td>`).join("")}
+                  <td class="text-start">
+                    <span class="action-link" data-biz-act="edit" data-biz-id="${r.id}">编辑</span>
+                    <span class="action-link" data-biz-act="delete" data-biz-id="${r.id}">删除</span>
+                  </td>
+                </tr>`).join("") : `<tr><td colspan="${fields.length+2}"><div class="empty-state">暂无业务数据，请点击新增。</div></td></tr>`}</tbody>
               </table>
             </div>
+            ${renderBusinessPagination(currentPage, totalPages, total)}
           </div>`;
-        document.querySelectorAll("[data-biz-tab]").forEach(tab=>tab.onclick=()=>{ businessTab=tab.dataset.bizTab; selectedBusinessRows.clear(); renderBusiness(); });
-        document.querySelectorAll(".bizCheck").forEach(chk=>chk.onchange=e=>{ e.target.checked?selectedBusinessRows.add(e.target.value):selectedBusinessRows.delete(e.target.value); });
-        document.getElementById("checkAllBiz").onchange=e=>{ selectedBusinessRows=new Set(e.target.checked?data.map((_,i)=>String(i)):[]); renderBusiness(); };
-        document.getElementById("templatePrintBtn").onclick = ()=>openPrintModal();
+
+        // Bind events
+        document.querySelectorAll("[data-biz-tab]").forEach(tab => {
+          tab.onclick = () => {
+            businessDataFilters = { type: tab.dataset.bizTab, keyword: "", page: 1, pageSize: 20 };
+            businessTab = tab.dataset.bizTab;
+            selectedBusinessRows.clear();
+            renderBusiness();
+          };
+        });
+        document.getElementById("bizQueryBtn").onclick = () => {
+          businessDataFilters.keyword = document.getElementById("bizKeyword").value.trim();
+          businessDataFilters.page = 1;
+          renderBusiness();
+        };
+        document.getElementById("bizResetBtn").onclick = () => {
+          businessDataFilters = { type: businessDataFilters.type, keyword: "", page: 1, pageSize: 20 };
+          renderBusiness();
+        };
+        document.getElementById("bizKeyword").onkeydown = e => { if (e.key==="Enter") document.getElementById("bizQueryBtn").click(); };
+        document.getElementById("bizAddBtn").onclick = () => openBizDataModal();
+        document.getElementById("templatePrintBtn").onclick = () => openPrintModal();
+        document.querySelectorAll("[data-biz-act]").forEach(el => {
+          el.onclick = () => {
+            const act = el.dataset.bizAct;
+            const id = el.dataset.bizId;
+            if (act === "edit") openBizDataModal(id);
+            if (act === "delete") deleteBizData(id);
+          };
+        });
+        document.querySelectorAll("[data-biz-page]").forEach(btn => {
+          btn.onclick = () => {
+            const p = Number(btn.dataset.bizPage);
+            if (p >= 1 && p <= totalPages) { businessDataFilters.page = p; renderBusiness(); }
+          };
+        });
       }
 
-      function openPrintModal(template = null) {
+      function renderBusinessPagination(page, totalPages, total) {
+        if (totalPages <= 1) return "";
+        const pages = [];
+        for (let i = Math.max(1, page-2); i <= Math.min(totalPages, page+2); i++) pages.push(i);
+        if (pages[0] > 1) { pages.unshift(1); if (pages[1] > 2) pages.splice(1, 0, "..."); }
+        if (pages[pages.length-1] < totalPages) { if (pages[pages.length-1] < totalPages-1) pages.push("..."); pages.push(totalPages); }
+        return `<div class="pagination-bar"><div class="pagination-controls">
+          <button class="pagination-btn" data-biz-page="${page-1}" ${page<=1?"disabled":""}>上一页</button>
+          ${pages.map(p=>p==="..."?`<span class="pagination-ellipsis">…</span>`:`<button class="pagination-btn ${p===page?"active":""}" data-biz-page="${p}">${p}</button>`).join("")}
+          <button class="pagination-btn" data-biz-page="${page+1}" ${page>=totalPages?"disabled":""}>下一页</button>
+        </div><span class="section-meta">共 ${total} 条</span></div>`;
+      }
+
+      function openBizDataModal(editId = null) {
+        const type = businessDataFilters.type;
+        const fields = FIELD_DICT[type] || [];
+        const isEdit = !!editId;
+        let editData = null;
+
+        const renderForm = async () => {
+          if (isEdit) {
+            try {
+              editData = await apiGetBusinessData(editId);
+            } catch (err) {
+              toast(`获取数据失败：${err.message}`);
+              return;
+            }
+          }
+          const data = editData ? editData.fields : {};
+          document.getElementById("genericModalTitle").textContent = isEdit ? "编辑业务数据" : "新增业务数据";
+          document.getElementById("genericModalBody").innerHTML = `
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">业务类型</label>
+                <input class="form-control" disabled value="${TYPE_LABEL[type]||type}">
+              </div>
+              ${fields.map(f => {
+                const val = data[f.code] ?? (f.example_value || "");
+                const required = f.is_required;
+                return `<div class="col-md-6 mb-3">
+                  <label class="form-label">${f.name}${required?'<span style="color:red">*</span>':''}</label>
+                  <input class="form-control biz-field-input" data-field="${f.code}" data-required="${required}" type="${f.field_type==='integer'?'number':'text'}" value="${escAttr(val)}" placeholder="${escAttr(f.example_value||'')}">
+                </div>`;
+              }).join("")}
+            </div>`;
+          document.getElementById("genericModalFoot").innerHTML = `
+            <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
+            <button class="btn btn-primary-wms" id="bizSaveBtn">保存</button>`;
+          genericModal.show();
+
+          document.getElementById("bizSaveBtn").onclick = async () => {
+            const bizData = {};
+            let hasError = false;
+            document.querySelectorAll(".biz-field-input").forEach(input => {
+              const code = input.dataset.field;
+              let val = input.value.trim();
+              if (input.dataset.required === "true" && !val) {
+                const label = fields.find(f => f.code === code)?.name || code;
+                toast(`必填字段 [${label}] 不能为空`);
+                hasError = true;
+                return;
+              }
+              if (input.type === "number") val = val === "" ? "" : String(val);
+              bizData[code] = val;
+            });
+            if (hasError) return;
+
+            try {
+              if (isEdit) {
+                await apiUpdateBusinessData(editId, { businessData: bizData });
+                toast("更新成功");
+              } else {
+                await apiCreateBusinessData({ businessType: type, businessData: bizData });
+                toast("创建成功");
+              }
+              genericModal.hide();
+              renderBusiness();
+            } catch (err) {
+              toast(`操作失败：${err.message}`);
+            }
+          };
+        };
+        renderForm();
+      }
+
+      async function deleteBizData(id) {
+        if (!confirm("确定删除该业务数据？此操作不可恢复。")) return;
+        try {
+          await apiDeleteBusinessData(id);
+          toast("删除成功");
+          renderBusiness();
+        } catch (err) {
+          toast(`删除失败：${err.message}`);
+        }
+      }
+
+      async function openPrintModal(template = null) {
         const initialTemplate = template || state.templates.find(t=>t.templateType===businessTab&&t.status==="published");
         if (!initialTemplate) return toast("无可用模板");
         if (initialTemplate.status !== "published") return toast("仅已发布模板支持打印");
-        const data=businessRowsByType(initialTemplate.templateType);
+
+        // Fetch real business data from backend
+        let data = [];
+        try {
+          const result = await apiListBusinessData(initialTemplate.templateType, { pageSize: 200 });
+          data = (result.rows || []).map(r => ({ _id: r.id, ...r.fields }));
+        } catch { /* fallback to empty */ }
+
+        const fieldKeys = data.length ? Object.keys(data[0]).filter(k => k !== "_id") : [];
         let printSelectedRows = new Set(data.length ? ["0"] : []);
         document.getElementById("genericModalTitle").textContent = "模板打印";
         document.getElementById("genericModalBody").innerHTML = `
           <div class="row">
             <div class="col-md-6 mb-3"><label class="form-label">模板名称</label><input class="form-control" disabled value="${escAttr(initialTemplate.templateName)} / ${escAttr(initialTemplate.version)}"></div>
             <div class="col-md-6 mb-3"><label class="form-label">模板类型</label><input class="form-control" disabled value="${TYPE_LABEL[initialTemplate.templateType]||initialTemplate.templateType}"></div>
-            <div class="col-md-6 mb-3"><label class="form-label">打印方式</label><select class="form-select" id="printMode"><option>控件打印</option><option>PDF 打印</option></select></div>
             <div class="col-md-6 mb-3"><label class="form-label">打印份数</label><input class="form-control" id="printCopies" type="number" min="1" value="1"></div>
-            <div class="col-md-6 mb-3"><label class="form-label">打印机</label><select class="form-select"><option>Zebra ZD421 - 100×50mm</option><option>PDF 虚拟打印机</option></select></div>
+            <div class="col-md-6 mb-3"><label class="form-label">打印方式</label><select class="form-select"><option>PDF打印</option></select></div>
             <div class="col-12 mb-3">
               <label class="form-label">业务数据</label>
               <div class="table-wrap">
                 <table class="table align-middle">
-                  <thead><tr><th class="selection-cell"><input id="checkAllPrintRows" type="checkbox"></th>${Object.keys(data[0] || {}).map(k=>`<th class="text-start">${bizHeader(k)}</th>`).join("")}</tr></thead>
+                  <thead><tr><th class="selection-cell"><input id="checkAllPrintRows" type="checkbox"></th>${fieldKeys.map(k=>`<th class="text-start">${bizHeader(k)}</th>`).join("")}</tr></thead>
                   <tbody>${data.map((r,i)=>`<tr>
                     <td class="selection-cell"><input class="printRowCheck" type="checkbox" value="${i}" ${i===0?"checked":""}></td>
-                    ${Object.values(r).map(v=>`<td class="text-start">${escHtml(v)}</td>`).join("")}
-                  </tr>`).join("") || `<tr><td colspan="4"><div class="empty-state">暂无模拟业务数据</div></td></tr>`}</tbody>
+                    ${fieldKeys.map(k=>`<td class="text-start">${escHtml(r[k])}</td>`).join("")}
+                  </tr>`).join("") || `<tr><td colspan="4"><div class="empty-state">暂无业务数据，请先在业务数据模块中添加。</div></td></tr>`}</tbody>
                 </table>
               </div>
             </div>
@@ -1261,62 +1441,36 @@ export async function initWmsPrintTemplateApp() {
           const copies=Math.max(1,Number(document.getElementById("printCopies").value||1));
           const codeKey=businessCodeKeyByType(tpl.templateType);
           try {
-            await submitPrint({
+            // Generate PDF and download (backend also logs the print operation)
+            const pdfBlob = await downloadPrintPdf({
               templateId: tpl.id,
               templateCode: tpl.templateCode,
+              rows: selected,
+              copies,
               businessType: tpl.templateType,
               businessNo: selected.map(r=>r[codeKey]).join(", "),
               warehouseCode: selected[0]?.warehouseCode || "",
-              printPayload: {
-                rows: selected,
-                printMode: document.getElementById("printMode").value,
-                copies,
-              },
-              printStatus: "success",
+              printMode: "PDF打印",
             });
+
+            // Trigger browser download
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${tpl.templateCode}_${new Date().toISOString().slice(0,10)}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
             addAppLog("模板打印",`${tpl.templateName} × ${selected.length*copies}`);
-            genericModal.hide(); toast("打印成功，已生成打印日志");
-            await hydrateState();
-            setView("logs");
+            genericModal.hide(); toast("打印成功，PDF 已下载");
           } catch (error) {
             toast(`打印失败：${error.message}`);
           }
         };
       }
 
-      // ══════════════════════════════════════
-      //  LOGS
-      // ══════════════════════════════════════
-      function renderLogs() { return PrintLogs.renderLogs(appContext); }
-
-      function renderLogsLegacy() {
-        document.getElementById("view-logs").innerHTML = `
-          <div class="card-panel">
-            <div class="section-head"><span style="font-weight:700">打印日志</span><span class="section-meta">共 ${state.printLogs.length} 条</span></div>
-            <div class="table-wrap">
-              <table class="table align-middle">
-                <thead><tr><th class="text-center" style="width:56px">序号</th><th class="text-start">打印时间</th><th class="text-start">操作人</th><th class="text-start">模板名称</th><th class="text-start">模板版本</th><th class="text-start">模板类型</th><th class="text-start">打印方式</th><th class="text-end">打印数量</th><th class="text-start">打印状态</th><th class="text-start">业务对象编码</th></tr></thead>
-                <tbody>${state.printLogs.map((l,i)=>`<tr>
-                  <td class="text-center">${i+1}</td><td class="text-start">${l.time}</td><td class="text-start">${l.operator}</td>
-                  <td class="text-start">${l.templateName}</td><td class="text-start">${l.templateVersion}</td>
-                  <td class="text-start">${TYPE_LABEL[l.templateType]}</td><td class="text-start">${l.printMode}</td>
-                  <td class="text-end">${l.printQty}</td>
-                  <td class="text-start"><span class="status-pill is-success">${l.status}</span></td>
-                  <td class="text-start">${l.bizCodes}</td>
-                </tr>`).join("")||`<tr><td colspan="10"><div class="empty-state">暂无打印日志，请在模板列表中点击打印。</div></td></tr>`}</tbody>
-              </table>
-            </div>
-          </div>
-          <div class="card-panel">
-            <div class="section-head"><span style="font-weight:700">模板操作日志</span><span class="section-meta">共 ${state.appLogs.length} 条</span></div>
-            <div class="table-wrap">
-              <table class="table align-middle">
-                <thead><tr><th class="text-center" style="width:56px">序号</th><th class="text-start">时间</th><th class="text-start">操作人</th><th class="text-start">操作</th><th class="text-start">对象</th></tr></thead>
-                <tbody>${state.appLogs.map((l,i)=>`<tr><td class="text-center">${i+1}</td><td class="text-start">${l.time}</td><td class="text-start">${l.operator}</td><td class="text-start">${l.action}</td><td class="text-start">${l.target}</td></tr>`).join("")}</tbody>
-              </table>
-            </div>
-          </div>`;
-      }
 
       // ══════════════════════════════════════
       //  HELPERS
@@ -1357,12 +1511,13 @@ export async function initWmsPrintTemplateApp() {
         set selectedBusinessRows(next) { selectedBusinessRows = next; },
         get aiDraft() { return aiDraft; },
         set aiDraft(next) { aiDraft = next; },
+        get businessDataState() { return businessDataState; },
+        get businessDataFilters() { return businessDataFilters; },
         renderTemplateListLegacy,
         renderDesignerLegacy,
         renderStandardsLegacy,
         renderFieldsLegacy,
-        renderBusinessLegacy,
-        renderLogsLegacy,
+        renderBusinessData,
       };
 
       // ── Init ──
@@ -1404,10 +1559,6 @@ export async function initWmsPrintTemplateApp() {
       document.getElementById("largeModal").addEventListener("hidden.bs.modal", ()=>{
         document.getElementById("largeModalBody").innerHTML = "";
         document.getElementById("largeModalFoot").innerHTML = "";
-      });
-      document.getElementById("logModal").addEventListener("hidden.bs.modal", ()=>{
-        document.getElementById("logModalBody").innerHTML = "";
-        document.getElementById("logModalFoot").innerHTML = "";
       });
 
       // ── STARTUP ──

@@ -48,3 +48,7 @@ export async function importTemplate(req, res) {
 export async function exportTemplate(req, res) {
   sendSuccess(res, await templateService.exportTemplate(req.params.id));
 }
+
+export async function deleteTemplate(req, res) {
+  sendSuccess(res, await templateService.deleteTemplate(req.params.id));
+}

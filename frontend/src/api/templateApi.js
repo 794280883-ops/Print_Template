@@ -56,6 +56,10 @@ export function importTemplate(templateDsl) {
   });
 }
 
+export function deleteTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export function exportTemplate(id) {
   return request(`/templates/${encodeURIComponent(id)}/export`);
 }
@@ -76,6 +80,23 @@ export function submitPrint(payload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * Generate and download a PDF for template printing.
+ * Returns a Blob that can be used to trigger a browser download.
+ */
+export async function downloadPrintPdf(payload) {
+  const res = await fetch("/api/v1/print/pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: "PDF generation failed" }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.blob();
 }
 
 export function listPrintLogs() {

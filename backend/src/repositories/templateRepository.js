@@ -114,6 +114,17 @@ export async function updateTemplateStatus(id, status, version = null) {
   return getTemplateById(id);
 }
 
+export async function deleteTemplate(id) {
+  return withTransaction(async (connection) => {
+    const [[template]] = await connection.query("SELECT * FROM print_template WHERE id = ?", [id]);
+    if (!template) return null;
+    await connection.query("DELETE FROM print_template_element WHERE template_id = ?", [id]);
+    await connection.query("DELETE FROM print_template_warehouse WHERE template_id = ?", [id]);
+    await connection.query("DELETE FROM print_template WHERE id = ?", [id]);
+    return { id, templateCode: template.template_code, templateName: template.template_name };
+  });
+}
+
 export async function updateTemplateName(id, templateName) {
   await pool.query("UPDATE print_template SET template_name = ?, updated_by = 'Admin' WHERE id = ?", [templateName, id]);
   return getTemplateById(id);

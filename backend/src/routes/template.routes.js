@@ -16,3 +16,4 @@ templateRouter.post("/templates/:id/disable", asyncHandler(templateController.di
 templateRouter.post("/templates/:id/copy", asyncHandler(templateController.copyTemplate));
 templateRouter.post("/templates/import", asyncHandler(templateController.importTemplate));
 templateRouter.get("/templates/:id/export", asyncHandler(templateController.exportTemplate));
+templateRouter.delete("/templates/:id", asyncHandler(templateController.deleteTemplate));
