@@ -32,6 +32,7 @@ export async function recordDesignLog(id) {
 export async function createTemplate(input) {
   const template = normalizeTemplateInput(input);
   await ensureTemplateCodeUnique(template.templateCode);
+  await ensureTemplateNameUnique(template.templateName);
   const created = await templateRepository.createTemplate(template);
   await operationLogRepository.addOperationLog({ actionName: "新增模板", targetId: created.id, targetName: created.templateName, afterJson: created });
   return created;
@@ -40,8 +41,10 @@ export async function createTemplate(input) {
 export async function updateTemplate(id, input) {
   await getTemplate(id);
   const template = normalizeTemplateInput(input);
-  const duplicated = await templateRepository.getTemplateRowByCode(template.templateCode);
-  if (duplicated && Number(duplicated.id) !== Number(id)) throw appError("模板编码重复", 40001, 409);
+  const duplicatedCode = await templateRepository.getTemplateRowByCode(template.templateCode);
+  if (duplicatedCode && Number(duplicatedCode.id) !== Number(id)) throw appError("模板编码重复", 40001, 409);
+  const duplicatedName = await templateRepository.getTemplateRowByName(template.templateName);
+  if (duplicatedName && Number(duplicatedName.id) !== Number(id)) throw appError("模板名称重复", 40003, 409);
   const updated = await templateRepository.replaceTemplate(id, template);
   await operationLogRepository.addOperationLog({ actionName: "保存草稿", targetId: updated.id, targetName: updated.templateName, afterJson: updated });
   return updated;
@@ -51,6 +54,8 @@ export async function updateTemplateName(id, input) {
   const before = await getTemplate(id);
   const templateName = String(input.templateName || input.name || "").trim();
   if (!templateName) throw appError("模板名称不能为空", 40000, 400);
+  const duplicated = await templateRepository.getTemplateRowByName(templateName);
+  if (duplicated && Number(duplicated.id) !== Number(id)) throw appError("模板名称重复", 40003, 409);
   const updated = await templateRepository.updateTemplateName(id, templateName);
   await operationLogRepository.addOperationLog({
     actionName: "编辑模板名称",
@@ -142,6 +147,12 @@ async function ensureTemplateCodeUnique(templateCode) {
   if (!templateCode) throw appError("模板编码不能为空", 40000, 400);
   const duplicated = await templateRepository.getTemplateRowByCode(templateCode);
   if (duplicated) throw appError("模板编码重复", 40001, 409);
+}
+
+async function ensureTemplateNameUnique(templateName) {
+  if (!templateName) throw appError("模板名称不能为空", 40000, 400);
+  const duplicated = await templateRepository.getTemplateRowByName(templateName);
+  if (duplicated) throw appError("模板名称重复", 40003, 409);
 }
 
 function nextVersion(version) {

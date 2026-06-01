@@ -30,7 +30,7 @@ export async function downloadPdf(req, res) {
     throw appError("缺少业务数据", 40000, 400);
   }
 
-  const { pdfBuffer, logEntry } = await printService.generatePdf({
+  const { pdfBuffer, logEntry, templateName } = await printService.generatePdf({
     templateId: payload.templateId,
     rows,
     copies: Number(payload.copies) || 1,
@@ -40,7 +40,11 @@ export async function downloadPdf(req, res) {
     operator: payload.operator,
   });
 
-  const filename = `print_${logEntry.templateCode || "template"}_${Date.now()}.pdf`;
+  const now = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const filename = `${templateName || "print"}_${dateStr}_${timeStr}.pdf`;
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);

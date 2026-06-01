@@ -34,10 +34,9 @@ import {
 } from '../api/businessDataApi.js';
 import { sampleByType, fieldExists, toDsl, fromDsl } from '../services/templateDslService.js';
 import { validateTemplateDsl } from '../services/validationService.js';
-import { parseAiPromptToTemplate, createLocationTemplateFromPrompt, createContainerTemplateFromPrompt, createProductTemplateFromPrompt } from '../services/aiTemplateService.js';
+import { parseAiPromptToTemplate } from '../services/aiTemplateService.js';
 import { TemplateList } from '../pages/TemplateList.js';
 import { TemplateDesigner } from '../pages/TemplateDesigner.js';
-import { StandardTemplates } from '../pages/StandardTemplates.js';
 import { FieldDictionary } from '../pages/FieldDictionary.js';
 import { BusinessData } from '../pages/BusinessData.js';
 
@@ -175,7 +174,6 @@ export async function initWmsPrintTemplateApp() {
       function render() {
         if (currentView==="templates") renderTemplateList();
         if (currentView==="designer") renderDesigner();
-        if (currentView==="standards") renderStandards();
         if (currentView==="fields") renderFields();
         if (currentView==="business") renderBusiness();
       }
@@ -225,7 +223,7 @@ export async function initWmsPrintTemplateApp() {
           <div class="card-panel">
             <div class="section-head">
               <div class="toolbar-actions">
-                <button class="btn btn-primary-wms" id="newTemplateBtn">新增模板</button>
+                <button class="btn btn-primary-wms" id="newTemplateBtn">新增</button>
               </div>
               <span class="section-meta">共 ${pagination.total} 条</span>
             </div>
@@ -236,7 +234,7 @@ export async function initWmsPrintTemplateApp() {
                   <th class="text-start">模板编码</th>
                   <th class="text-start">模板名称</th>
                   <th class="text-start">模板类型</th>
-                  <th class="text-start">尺寸（宽 × 长）</th>
+                  <th class="text-start">尺寸（宽×高）</th>
                   <th class="text-start">状态</th>
                   <th class="text-start">更新时间</th>
                   <th class="text-start">操作</th>
@@ -247,12 +245,11 @@ export async function initWmsPrintTemplateApp() {
                     <td class="text-start"><span class="text-link action-link" data-act="design" data-id="${t.id}">${t.templateCode}</span></td>
                     <td class="text-start">${t.templateName}</td>
                     <td class="text-start">${TYPE_LABEL[t.templateType]||t.templateType}</td>
-                    <td class="text-start">${t.size.width} × ${t.size.height}${t.size.unit}</td>
+                    <td class="text-start">${t.size.width} × ${t.size.height}</td>
                     <td class="text-start"><span class="status-pill ${STATUS_CLASS[t.status]}">${STATUS_LABEL[t.status]}</span></td>
                     <td class="text-start">${t.updatedAt}</td>
                     <td class="text-start">
                       <span class="action-link" data-act="preview" data-id="${t.id}">预览</span>
-                      <span class="action-link" data-act="print" data-id="${t.id}">打印</span>
                       <span class="action-link" data-act="copy" data-id="${t.id}">复制</span>
                       <span class="action-link" data-act="publish" data-id="${t.id}">发布</span>
                       <span class="action-link text-danger" data-act="delete" data-id="${t.id}">删除</span>
@@ -351,7 +348,6 @@ export async function initWmsPrintTemplateApp() {
         if (!t) return;
         if (action==="design") { await enterTemplateDesigner(t); }
         if (action==="preview") openPreviewModal(t);
-        if (action==="print") openPrintModal(t);
         if (action==="copy") {
           const copy = await apiCopyTemplate(t.id);
           state.templates.unshift(copy);
@@ -433,9 +429,11 @@ export async function initWmsPrintTemplateApp() {
                 <span class="status-pill ${STATUS_CLASS[t.status]}" style="margin-left:8px">${STATUS_LABEL[t.status]}</span>
                 <span class="section-meta" style="margin-left:8px">${TYPE_LABEL[t.templateType]}</span>
                 <span class="designer-size-editor" aria-label="标签尺寸">
-                  <input class="designer-size-input" id="designerWidth" type="number" min="1" step="0.5" value="${num(t.size.width)}" title="宽度">
+                  <span class="designer-size-label">宽</span>
+                  <input class="designer-size-input" id="designerWidth" type="number" min="1" step="0.5" value="${num(t.size.width)}" title="宽度 mm">
                   <span>×</span>
-                  <input class="designer-size-input" id="designerHeight" type="number" min="1" step="0.5" value="${num(t.size.height)}" title="长度">
+                  <span class="designer-size-label">高</span>
+                  <input class="designer-size-input" id="designerHeight" type="number" min="1" step="0.5" value="${num(t.size.height)}" title="高度 mm">
                   <span class="designer-unit-text" id="designerUnit">mm</span>
                 </span>
               </div>
@@ -524,13 +522,25 @@ export async function initWmsPrintTemplateApp() {
         </div>`;
       }
 
+      function dirArrow(v) {
+        const map = { "向上": "↑", "向下": "↓", "向左": "←", "向右": "→" };
+        return map[v] || v;
+      }
+
       function elementDisplay(el, t, preview, data = sampleByType(t.templateType)) {
         if (el.type==="qrcode") return `<div class="qr" title="${el.bindField||""}"></div>`;
         if (el.type==="barcode") return `<div class="barcode" title="${el.bindField||""}"></div>`;
         if (el.type==="image") return el.imageUrl?`<img src="${escAttr(el.imageUrl)}" alt="" style="max-width:100%;max-height:100%">`:`<span class="section-meta">图片</span>`;
         if (el.type==="checkbox") return `<div class="checkbox-content"><span class="checkbox-mark ${el.checked?"checked":""}">${el.checked?"✓":""}</span>${el.text?`<span class="checkbox-label">${escHtml(el.text)}</span>`:""}</div>`;
         if (el.type==="line"||el.type==="rect") return "";
-        const value = el.textKind==="field"?(data[el.bindField]??`[${el.bindField||"未绑定"}]`):(el.text ?? "静态文本");
+        // Preview/print mode: bindField takes priority (matches PDF logic)
+        // Designer mode: respect textKind (static text as placeholder)
+        const rawValue = (preview && el.bindField && data[el.bindField] !== undefined)
+          ? String(data[el.bindField])
+          : el.textKind==="field"
+            ? (data[el.bindField] ?? `[${el.bindField||"未绑定"}]`)
+            : (el.text ?? "静态文本");
+        const value = dirArrow(String(rawValue));
         return `<div class="el-content">${escHtml(value)}</div>`;
       }
 
@@ -552,16 +562,24 @@ export async function initWmsPrintTemplateApp() {
             <label class="checkbox-row"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
             <div class="field"><label class="form-label">对齐</label><select class="form-select" data-prop="align">${["left","center","right"].map(v=>`<option value="${v}" ${(el.align||"left")===v?"selected":""}>${{left:"左对齐",center:"居中",right:"右对齐"}[v]}</option>`).join("")}</select></div>
             <div class="field"><label class="form-label">文字颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div>
-            <div class="field span"><label class="form-label">背景色</label><input class="form-control" data-prop="backgroundColor" value="${el.backgroundColor||"transparent"}" placeholder="#000000 或 transparent"></div>
           </div>`;
         const bindSelect = `<select class="form-select" data-prop="bindField"><option value="">请选择字段</option>${fields.map(f=>`<option value="${f.code}" ${el.bindField===f.code?"selected":""}>${f.name}</option>`).join("")}</select>`;
         if (el.type==="text") {
+          // directionMark is always a field binding, simplify properties
+          const isDirection = el.bindField === "directionMark";
+          if (isDirection) el.textKind = "field";
+          const dirStyleProps = isDirection ? `
+            <div class="form-grid" style="margin-top:10px">
+              <div class="field"><label class="form-label">字号 px</label><input class="form-control" data-prop="fontSize" type="number" value="${el.fontSize||12}"></div>
+              <label class="checkbox-row"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
+              <div class="field"><label class="form-label">文字颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div>
+            </div>` : styleProps;
           return `${common}
             <div class="form-grid" style="margin-top:10px">
-              <div class="field"><label class="form-label">文本类型</label><select class="form-select" data-prop="textKind"><option value="static" ${el.textKind!=="field"?"selected":""}>静态文本</option><option value="field" ${el.textKind==="field"?"selected":""}>动态字段</option></select></div>
+              ${isDirection ? '' : `<div class="field"><label class="form-label">文本类型</label><select class="form-select" data-prop="textKind"><option value="static" ${el.textKind!=="field"?"selected":""}>静态文本</option><option value="field" ${el.textKind==="field"?"selected":""}>动态字段</option></select></div>`}
               <div class="field"><label class="form-label">绑定字段</label>${bindSelect}</div>
-              <div class="field span"><label class="form-label">静态内容</label><textarea class="form-control" data-prop="text" rows="3">${escHtml(el.text||"")}</textarea></div>
-            </div>${styleProps}`;
+              ${isDirection ? '' : `<div class="field span"><label class="form-label">静态内容</label><textarea class="form-control" data-prop="text" rows="3">${escHtml(el.text||"")}</textarea></div>`}
+            </div>${dirStyleProps}`;
         }
         if (el.type==="qrcode"||el.type==="barcode") {
           if (!el.errorLevel) el.errorLevel = "M";
@@ -579,7 +597,6 @@ export async function initWmsPrintTemplateApp() {
               <label class="checkbox-row"><input data-prop="checked" type="checkbox" ${el.checked?"checked":""}>选中</label>
               <div class="field span"><label class="form-label">固定文字</label><input class="form-control" data-prop="checkboxText" value="${escAttr(el.text||"")}" placeholder="例如：易碎 / 已复核"></div>
               <div class="field"><label class="form-label">边框颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div>
-              <div class="field span"><label class="form-label">背景色</label><input class="form-control" data-prop="backgroundColor" value="${el.backgroundColor||"transparent"}" placeholder="#000000 或 transparent"></div>
             </div>`;
         }
         if (el.type==="rect") {
@@ -589,7 +606,7 @@ export async function initWmsPrintTemplateApp() {
               <div class="field"><label class="form-label">背景色</label><input class="form-control" data-prop="backgroundColor" type="color" value="${normalizeColor(el.backgroundColor||"#eaf4ff")}"></div>
             </div>`;
         }
-        return `${common}<div class="form-grid" style="margin-top:10px"><div class="field"><label class="form-label">线条/边框颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div><div class="field"><label class="form-label">背景色</label><input class="form-control" data-prop="backgroundColor" value="${el.backgroundColor||""}"></div></div>`;
+        return `${common}<div class="form-grid" style="margin-top:10px"><div class="field"><label class="form-label">线条/边框颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div></div>`;
       }
 
       function bindDesignerEvents() {
@@ -758,6 +775,7 @@ export async function initWmsPrintTemplateApp() {
         if (prop==="bold" || prop==="checked") value=Boolean(value);
         el[prop]=value;
         if (prop==="textKind"&&value==="field"&&!el.bindField) el.bindField=(FIELD_DICT[t.templateType]||[])[0]?.code||"";
+        if (prop==="bindField"&&value&&el.type==="text") el.textKind="field";
         el.x=clamp(Number(el.x||0),-Number(el.width||1)+1,t.size.width-1);
         el.y=clamp(Number(el.y||0),-Number(el.height||1)+1,t.size.height-1);
         el.width=Math.max(1,Number(el.width||1));
@@ -1049,48 +1067,6 @@ export async function initWmsPrintTemplateApp() {
       }
 
       // ══════════════════════════════════════
-      //  STANDARDS
-      // ══════════════════════════════════════
-      function renderStandards() { return StandardTemplates.renderStandards(appContext); }
-
-      function renderStandardsLegacy() {
-        const standards = [
-          ["LOCATION","库位大标签","100mm × 50mm","大字体库位编码 + 二维码 + 方向标"],
-          ["LOCATION","库位小标签","80mm × 30mm","小库位标签"],
-          ["CONTAINER","入库容器标签","100mm × 50mm","CONTAINER INBOUND"],
-          ["CONTAINER","移库容器标签","100mm × 50mm","CONTAINER TRANSFER"],
-          ["CONTAINER","拣货容器标签","100mm × 150mm","PICKING CONTAINER"],
-          ["CONTAINER","窄版拣货标签","30mm × 90mm","适合窄标签纸"],
-          ["PRODUCT","商品标签","30mm × 70mm","商品编码 + 客户商品编码"]
-        ];
-        document.getElementById("view-standards").innerHTML = `
-          <div class="card-panel">
-            <div class="section-head"><span style="font-weight:700">标准模板库</span><span class="section-meta">共 ${standards.length} 个模板</span></div>
-            <div class="table-wrap">
-              <table class="table align-middle">
-                <thead><tr><th class="text-center" style="width:56px">序号</th><th class="text-start">模板类型</th><th class="text-start">模板名称</th><th class="text-start">尺寸建议</th><th class="text-start">说明</th><th class="text-start">操作</th></tr></thead>
-                <tbody>${standards.map((s,i)=>`<tr><td class="text-center">${i+1}</td><td class="text-start">${TYPE_LABEL[s[0]]}</td><td class="text-start">${s[1]}</td><td class="text-start">${s[2]}</td><td class="text-start">${s[3]}</td><td class="text-start"><span class="action-link" data-std="${i}">使用模板</span></td></tr>`).join("")}</tbody>
-              </table>
-            </div>
-          </div>`;
-        document.querySelectorAll("[data-std]").forEach(el=>el.onclick=async ()=>{
-          const s=standards[Number(el.dataset.std)];
-          const prompt=`${s[1]} ${s[3]} 二维码 方向标 加粗`;
-          const tpl=s[0]==="LOCATION"?createLocationTemplateFromPrompt(prompt, uid):s[0]==="PRODUCT"?createProductTemplateFromPrompt(prompt, uid):createContainerTemplateFromPrompt(prompt, uid);
-          tpl.templateName=`${s[1]}-草稿`;
-          const size=s[2].match(/(\d+)mm × (\d+)mm/);
-          if (size) tpl.size={width:Number(size[1]),height:Number(size[2]),unit:"mm",dpi:203};
-          try {
-            const created = await apiCreateTemplate(tpl);
-            state.templates.unshift(created); currentTemplateId=created.id; selectedElementId=created.elements[0]?.id||null;
-            addAppLog("使用标准模板",created.templateName); setView("designer");
-          } catch (error) {
-            toast(`使用标准模板失败：${error.message}`);
-          }
-        });
-      }
-
-      // ══════════════════════════════════════
       //  FIELDS
       // ══════════════════════════════════════
       function renderFields() { return FieldDictionary.renderFields(appContext); }
@@ -1207,31 +1183,34 @@ export async function initWmsPrintTemplateApp() {
                   <button class="btn btn-primary-wms" id="bizQueryBtn">查询</button>
                   <button class="btn btn-secondary-wms" id="bizResetBtn">重置</button>
                 </div>
-                <div class="col text-end">
-                  <button class="btn btn-primary-wms" id="bizAddBtn">新增</button>
-                  <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
-                </div>
               </div>
             </div>
           </div>
           <div class="card-panel">
             <div class="section-head">
-              <span style="font-weight:700">${TYPE_LABEL[type]||type} 业务数据</span>
-              <span class="section-meta">共 ${total} 条</span>
+              <div class="toolbar-actions">
+                <button class="btn btn-primary-wms" id="bizAddBtn">新增</button>
+                <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
+              </div>
+              <div>
+                <span class="section-meta">共 ${total} 条</span>
+              </div>
             </div>
             <div class="table-wrap">
               <table class="table align-middle">
                 <thead><tr>
+                  <th class="selection-cell"><input id="bizCheckAll" type="checkbox"></th>
                   ${["编码", ...fields.map(f=>f.name), "操作"].map(h=>`<th class="text-start">${h}</th>`).join("")}
                 </tr></thead>
                 <tbody>${rows.length ? rows.map(r=>`<tr>
+                  <td class="selection-cell"><input class="bizRowCheck" type="checkbox" value="${r.id}" ${selectedBusinessRows.has(String(r.id))?"checked":""}></td>
                   <td class="text-start" style="font-weight:600">${escHtml(r.businessCode)}</td>
                   ${fields.map(f=>`<td class="text-start">${escHtml(r.fields[f.code] ?? "-")}</td>`).join("")}
                   <td class="text-start">
                     <span class="action-link" data-biz-act="edit" data-biz-id="${r.id}">编辑</span>
                     <span class="action-link" data-biz-act="delete" data-biz-id="${r.id}">删除</span>
                   </td>
-                </tr>`).join("") : `<tr><td colspan="${fields.length+2}"><div class="empty-state">暂无业务数据，请点击新增。</div></td></tr>`}</tbody>
+                </tr>`).join("") : `<tr><td colspan="${fields.length+3}"><div class="empty-state">暂无业务数据，请点击新增。</div></td></tr>`}</tbody>
               </table>
             </div>
             ${renderBusinessPagination(currentPage, totalPages, total)}
@@ -1257,7 +1236,34 @@ export async function initWmsPrintTemplateApp() {
         };
         document.getElementById("bizKeyword").onkeydown = e => { if (e.key==="Enter") document.getElementById("bizQueryBtn").click(); };
         document.getElementById("bizAddBtn").onclick = () => openBizDataModal();
-        document.getElementById("templatePrintBtn").onclick = () => openPrintModal();
+        document.getElementById("templatePrintBtn").onclick = () => {
+          if (selectedBusinessRows.size === 0) return toast("请先勾选要打印的业务数据");
+          // Map selected IDs to data objects
+          const selectedData = rows.filter(r => selectedBusinessRows.has(String(r.id))).map(r => ({ _id: r.id, ...r.fields }));
+          openPrintModal(null, selectedData);
+        };
+        // Select-all checkbox
+        const bizCheckAll = document.getElementById("bizCheckAll");
+        if (bizCheckAll) {
+          bizCheckAll.checked = rows.length > 0 && rows.every(r => selectedBusinessRows.has(String(r.id)));
+          bizCheckAll.onchange = () => {
+            document.querySelectorAll(".bizRowCheck").forEach(chk => {
+              chk.checked = bizCheckAll.checked;
+              if (bizCheckAll.checked) selectedBusinessRows.add(chk.value);
+              else selectedBusinessRows.delete(chk.value);
+            });
+          };
+        }
+        // Individual row checkboxes
+        document.querySelectorAll(".bizRowCheck").forEach(chk => {
+          chk.onchange = () => {
+            if (chk.checked) selectedBusinessRows.add(chk.value);
+            else selectedBusinessRows.delete(chk.value);
+            // Sync select-all
+            const allChk = document.getElementById("bizCheckAll");
+            if (allChk) allChk.checked = rows.length > 0 && rows.every(r => selectedBusinessRows.has(String(r.id)));
+          };
+        });
         document.querySelectorAll("[data-biz-act]").forEach(el => {
           el.onclick = () => {
             const act = el.dataset.bizAct;
@@ -1311,11 +1317,19 @@ export async function initWmsPrintTemplateApp() {
                 <input class="form-control" disabled value="${TYPE_LABEL[type]||type}">
               </div>
               ${fields.map(f => {
-                const val = data[f.code] ?? (f.example_value || "");
-                const required = f.is_required;
+                const val = data[f.code] ?? "";
+                const required = f.required;
+                const isSelect = f.type === 'select';
+                const options = isSelect ? (() => { try { return JSON.parse(f.example || '[]'); } catch { return []; } })() : [];
+                const inputHtml = isSelect
+                  ? `<select class="form-select biz-field-input" data-field="${f.code}" data-required="${required}">
+                      <option value="">请选择</option>
+                      ${options.map(opt => `<option value="${escAttr(opt)}" ${val === opt ? 'selected' : ''}>${escHtml(opt)}</option>`).join("")}
+                    </select>`
+                  : `<input class="form-control biz-field-input" data-field="${f.code}" data-required="${required}" type="${f.type==='integer'?'number':'text'}" value="${escAttr(val)}" placeholder="${escAttr(f.example||'')}">`;
                 return `<div class="col-md-6 mb-3">
                   <label class="form-label">${f.name}${required?'<span style="color:red">*</span>':''}</label>
-                  <input class="form-control biz-field-input" data-field="${f.code}" data-required="${required}" type="${f.field_type==='integer'?'number':'text'}" value="${escAttr(val)}" placeholder="${escAttr(f.example_value||'')}">
+                  ${inputHtml}
                 </div>`;
               }).join("")}
             </div>`;
@@ -1370,36 +1384,60 @@ export async function initWmsPrintTemplateApp() {
         }
       }
 
-      async function openPrintModal(template = null) {
-        const initialTemplate = template || state.templates.find(t=>t.templateType===businessTab&&t.status==="published");
-        if (!initialTemplate) return toast("无可用模板");
-        if (initialTemplate.status !== "published") return toast("仅已发布模板支持打印");
+      async function openPrintModal(template = null, preselectedData = null) {
+        // Find all published templates matching the current business type
+        const publishedTemplates = state.templates.filter(
+          t => t.templateType === businessTab && t.status === "published"
+        );
 
-        // Fetch real business data from backend
+        if (!publishedTemplates.length) return toast(`暂无${TYPE_LABEL[businessTab]||businessTab}类型的已发布模板`);
+        // Default to first published template when multiple exist (user can switch via dropdown)
+        if (!template) template = publishedTemplates[0];
+
+        // Track the currently active template (may change via dropdown)
+        let activeTemplate = template;
+
+        // Use preselected data if provided, otherwise fetch from backend
         let data = [];
-        try {
-          const result = await apiListBusinessData(initialTemplate.templateType, { pageSize: 200 });
-          data = (result.rows || []).map(r => ({ _id: r.id, ...r.fields }));
-        } catch { /* fallback to empty */ }
+        if (preselectedData && preselectedData.length) {
+          data = preselectedData;
+        } else {
+          try {
+            const result = await apiListBusinessData(activeTemplate.templateType, { pageSize: 200 });
+            data = (result.rows || []).map(r => ({ _id: r.id, ...r.fields }));
+          } catch { /* fallback to empty */ }
+        }
 
         const fieldKeys = data.length ? Object.keys(data[0]).filter(k => k !== "_id") : [];
-        let printSelectedRows = new Set(data.length ? ["0"] : []);
+        // Pre-check all rows
+        let printSelectedRows = new Set(data.map((_, i) => String(i)));
+
+        // Template selector for multiple templates of same type
+        const templateSelector = publishedTemplates.length > 1 ? `
+          <div class="col-md-6 mb-3">
+            <label class="form-label">选择模板 <span style="color:red">*</span></label>
+            <select class="form-select" id="printTemplateSelect">
+              ${publishedTemplates.map(t => `<option value="${t.id}" ${t.id === activeTemplate.id ? "selected" : ""}>${escHtml(t.templateName)}</option>`).join("")}
+            </select>
+          </div>` : `
+          <div class="col-md-6 mb-3"><label class="form-label">模板名称</label><input class="form-control" disabled value="${escAttr(activeTemplate.templateName)}"></div>`;
+
         document.getElementById("genericModalTitle").textContent = "模板打印";
         document.getElementById("genericModalBody").innerHTML = `
           <div class="row">
-            <div class="col-md-6 mb-3"><label class="form-label">模板名称</label><input class="form-control" disabled value="${escAttr(initialTemplate.templateName)} / ${escAttr(initialTemplate.version)}"></div>
-            <div class="col-md-6 mb-3"><label class="form-label">模板类型</label><input class="form-control" disabled value="${TYPE_LABEL[initialTemplate.templateType]||initialTemplate.templateType}"></div>
+            ${templateSelector}
+            <div class="col-md-6 mb-3"><label class="form-label">模板类型</label><input class="form-control" disabled value="${TYPE_LABEL[activeTemplate.templateType]||activeTemplate.templateType}"></div>
             <div class="col-md-6 mb-3"><label class="form-label">打印份数</label><input class="form-control" id="printCopies" type="number" min="1" value="1"></div>
             <div class="col-md-6 mb-3"><label class="form-label">打印方式</label><select class="form-select"><option>PDF打印</option></select></div>
             <div class="col-12 mb-3">
               <label class="form-label">业务数据</label>
               <div class="table-wrap">
                 <table class="table align-middle">
-                  <thead><tr><th class="selection-cell"><input id="checkAllPrintRows" type="checkbox"></th>${fieldKeys.map(k=>`<th class="text-start">${bizHeader(k)}</th>`).join("")}</tr></thead>
+                  <thead><tr><th class="selection-cell"><input id="checkAllPrintRows" type="checkbox" checked></th>${fieldKeys.map(k=>`<th class="text-start">${bizHeader(k)}</th>`).join("")}</tr></thead>
                   <tbody>${data.map((r,i)=>`<tr>
-                    <td class="selection-cell"><input class="printRowCheck" type="checkbox" value="${i}" ${i===0?"checked":""}></td>
+                    <td class="selection-cell"><input class="printRowCheck" type="checkbox" value="${i}" checked></td>
                     ${fieldKeys.map(k=>`<td class="text-start">${escHtml(r[k])}</td>`).join("")}
-                  </tr>`).join("") || `<tr><td colspan="4"><div class="empty-state">暂无业务数据，请先在业务数据模块中添加。</div></td></tr>`}</tbody>
+                  </tr>`).join("") || `<tr><td colspan="${fieldKeys.length + 1}"><div class="empty-state">暂无业务数据，请先在业务数据模块中添加。</div></td></tr>`}</tbody>
                 </table>
               </div>
             </div>
@@ -1407,13 +1445,12 @@ export async function initWmsPrintTemplateApp() {
           </div>`;
         document.getElementById("genericModalFoot").innerHTML = `
           <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
-          <button class="btn btn-light-wms" id="printPreviewBtn">预览</button>
           <button class="btn btn-primary-wms" id="printConfirmBtn">打印</button>`;
         genericModal.show();
 
         const selectedRows = ()=>[...printSelectedRows].map(i=>data[Number(i)]).filter(Boolean);
         const drawPreview = ()=>{
-          const tpl=initialTemplate;
+          const tpl=activeTemplate;
           const selected=selectedRows();
           const box=document.getElementById("printPreview");
           if (!tpl || !selected.length) { box.innerHTML=`<div class="empty-state">请选择业务数据</div>`; return; }
@@ -1423,6 +1460,16 @@ export async function initWmsPrintTemplateApp() {
           zoom=oldZoom;
         };
         drawPreview();
+
+        // Template selector: switch template and redraw preview
+        const templateSelect = document.getElementById("printTemplateSelect");
+        if (templateSelect) {
+          templateSelect.onchange = () => {
+            activeTemplate = publishedTemplates.find(t => t.id === templateSelect.value) || activeTemplate;
+            drawPreview();
+          };
+        }
+
         document.querySelectorAll(".printRowCheck").forEach(chk=>chk.onchange=e=>{
           e.target.checked?printSelectedRows.add(e.target.value):printSelectedRows.delete(e.target.value);
           drawPreview();
@@ -1432,9 +1479,8 @@ export async function initWmsPrintTemplateApp() {
           document.querySelectorAll(".printRowCheck").forEach(chk=>{ chk.checked=e.target.checked; });
           drawPreview();
         };
-        document.getElementById("printPreviewBtn").onclick=drawPreview;
         document.getElementById("printConfirmBtn").onclick=async ()=>{
-          const tpl=initialTemplate;
+          const tpl=activeTemplate;
           if (!tpl) return toast("无可用模板");
           const selected=selectedRows();
           if (!selected.length) return toast("请先选择业务数据");
@@ -1457,7 +1503,11 @@ export async function initWmsPrintTemplateApp() {
             const url = URL.createObjectURL(pdfBlob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `${tpl.templateCode}_${new Date().toISOString().slice(0,10)}.pdf`;
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+            const timeStr = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            a.download = `${tpl.templateName}_${dateStr}_${timeStr}.pdf`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1515,7 +1565,6 @@ export async function initWmsPrintTemplateApp() {
         get businessDataFilters() { return businessDataFilters; },
         renderTemplateListLegacy,
         renderDesignerLegacy,
-        renderStandardsLegacy,
         renderFieldsLegacy,
         renderBusinessData,
       };

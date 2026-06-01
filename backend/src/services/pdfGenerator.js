@@ -7,7 +7,7 @@ import { Buffer } from "node:buffer";
 const MM_TO_PT = 72 / 25.4;
 
 // macOS full CJK font (TTF format required for pdfkit; subset fonts like Hei/Kai have broken cmap)
-const CJK_FONT_PATH = "/System/Library/PrivateFrameworks/FontServices.framework/Versions/A/Resources/Fonts/ApplicationSupport/LantingheiTC-Extralight.ttf";
+const CJK_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf";
 
 /**
  * Generate a PDF buffer from a template and data rows.
@@ -112,7 +112,7 @@ async function renderElement(doc, el, data, ensureCjkFont) {
         await renderImage(doc, el, x, y, w, h);
         break;
       case "checkbox":
-        renderCheckbox(doc, el, x, y, w, h);
+        renderCheckbox(doc, el, x, y, w, h, ensureCjkFont);
         break;
       default:
         break;
@@ -130,13 +130,22 @@ async function renderElement(doc, el, data, ensureCjkFont) {
 // ── Text ────────────────────────────────────────────
 let cjkFontAvailable = true;
 
+// Direction label → arrow symbol mapping
+const DIR_ARROWS = { "向上": "↑", "向下": "↓", "向左": "←", "向右": "→" };
+function dirArrow(v) { return DIR_ARROWS[v] || v; }
+
 function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
-  const value =
-    el.textKind === "field"
-      ? String(data[el.bindField] ?? `[${el.bindField || "未绑定"}]`)
+  // When bindField exists and data provides the value, always use field value (print mode)
+  // Otherwise use static text (designer placeholder)
+  const rawValue = (el.bindField && data[el.bindField] !== undefined)
+    ? String(data[el.bindField])
+    : el.textKind === "field"
+      ? `[${el.bindField || "未绑定"}]`
       : (el.text ?? "静态文本");
 
-  if (!value) return;
+  if (!rawValue) return;
+
+  const value = dirArrow(rawValue);
 
   const fontSize = el.fontSize || 12;
   const color = el.color || "#111827";
@@ -164,7 +173,6 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
     width: w,
     align,
     height: h,
-    ellipsis: true,
     lineBreak: false,
   });
 }
@@ -175,18 +183,23 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
   if (!value) return;
 
   try {
+    // bwip-js height in mm, scale controls resolution (higher = sharper)
+    const heightMm = h / MM_TO_PT;
+    const widthMm = w / MM_TO_PT;
     const pngBuffer = await bwipjs.toBuffer({
       bcid: "code128",
       text: value,
-      scale: 3,
-      height: Math.round(h / MM_TO_PT * 2.835), // approximate
+      scale: 5,
+      height: heightMm,
+      width: widthMm,
       includetext: true,
       textxalign: "center",
-      textsize: 8,
-      paddingwidth: 2,
-      paddingheight: 2,
+      textsize: 10,
+      paddingwidth: 0,
+      paddingheight: 0,
     });
 
+    // Render barcode at exact element dimensions to match preview layout
     doc.image(pngBuffer, x, y, { width: w, height: h });
   } catch (err) {
     // Fallback: draw a placeholder with the value
@@ -265,7 +278,7 @@ async function renderImage(doc, el, x, y, w, h) {
 }
 
 // ── Checkbox ────────────────────────────────────────
-function renderCheckbox(doc, el, x, y, w, h) {
+function renderCheckbox(doc, el, x, y, w, h, ensureCjkFont) {
   const boxSize = Math.min(h, 12);
   const boxX = x;
   const boxY = y + (h - boxSize) / 2;
@@ -281,11 +294,22 @@ function renderCheckbox(doc, el, x, y, w, h) {
     });
   }
 
-  // Draw label if present
+  // Draw label if present (use CJK font for Chinese text support)
   if (el.text) {
     const textX = boxX + boxSize + 4;
     const textW = w - boxSize - 4;
-    doc.font("Helvetica").fontSize(el.fontSize || 10).fillColor(el.color || "#111827")
+    if (cjkFontAvailable) {
+      try {
+        ensureCjkFont();
+        doc.font("CJK");
+      } catch {
+        cjkFontAvailable = false;
+      }
+    }
+    if (!cjkFontAvailable) {
+      doc.font("Helvetica");
+    }
+    doc.fontSize(el.fontSize || 10).fillColor(el.color || "#111827")
       .text(el.text, textX, y, { width: textW, height: h, ellipsis: true });
   }
 }

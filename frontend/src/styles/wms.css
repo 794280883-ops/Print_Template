@@ -251,6 +251,11 @@
       color: var(--wms-muted);
       font-size: 13px;
     }
+    .designer-size-label {
+      font-size: 12px;
+      color: var(--wms-muted);
+      user-select: none;
+    }
     .designer-size-input {
       width: 62px;
       min-height: 30px;

@@ -48,5 +48,5 @@ export async function generatePdf(payload) {
     operator: payload.operator || "Admin",
   });
 
-  return { pdfBuffer, logEntry };
+  return { pdfBuffer, logEntry, templateName: template.templateName };
 }

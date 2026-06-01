@@ -54,6 +54,11 @@ export async function getTemplateRowByCode(templateCode, connection = pool) {
   return row || null;
 }
 
+export async function getTemplateRowByName(templateName, connection = pool) {
+  const [[row]] = await connection.query("SELECT * FROM print_template WHERE template_name = ?", [templateName]);
+  return row || null;
+}
+
 export async function createTemplate(template) {
   return withTransaction(async (connection) => {
     const [result] = await connection.query(
