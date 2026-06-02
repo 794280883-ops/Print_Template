@@ -55,7 +55,7 @@ export async function initWmsPrintTemplateApp() {
       let history = [];
       let future = [];
       let clipboardElement = null;
-      let autoSaveTimer = null;
+      let designerDraft = null;
       let filters = { name: "", type: "", status: "" };
       let pagination = { page: 1, pageSize: 20, total: 0 };
       let businessTab = "LOCATION";
@@ -90,7 +90,10 @@ export async function initWmsPrintTemplateApp() {
         setTimeout(()=>el.remove(),2400);
       }
 
-      function currentTemplate() { return state.templates.find(t=>t.id===currentTemplateId)||state.templates[0]; }
+      function currentTemplate() {
+        if (currentView === "designer" && designerDraft) return designerDraft;
+        return state.templates.find(t=>t.id===currentTemplateId)||state.templates[0];
+      }
       function defaultState() {
         return { templates: [] };
       }
@@ -133,8 +136,7 @@ export async function initWmsPrintTemplateApp() {
         if (currentView !== "designer") return;
         const t = currentTemplate();
         if (!t?.id || !String(t.templateName || "").trim()) return;
-        clearTimeout(autoSaveTimer);
-        autoSaveTimer = setTimeout(()=>persistCurrentTemplate(), 700);
+        // 仅标记有未保存更改，不自动持久化；用户需点击"保存"按钮
       }
 
       async function persistCurrentTemplate() {
@@ -143,8 +145,14 @@ export async function initWmsPrintTemplateApp() {
         try {
           const updated = await updateTemplate(t.id, deepClone(t));
           replaceTemplate(updated);
+          // 保存成功后同步更新草稿
+          if (designerDraft && designerDraft.id === updated.id) {
+            designerDraft = deepClone(updated);
+          }
+          return updated;
         } catch (error) {
-          toast(`自动保存失败：${error.message}`);
+          toast(`保存失败：${error.message}`);
+          throw error;
         }
       }
 
@@ -162,6 +170,10 @@ export async function initWmsPrintTemplateApp() {
 
       // ── View switching ──
       function setView(view) {
+        // 离开设计器时丢弃未保存的草稿
+        if (currentView === "designer" && view !== "designer") {
+          designerDraft = null;
+        }
         currentView = view;
         document.querySelectorAll("#tabbarTabs .nav-tab").forEach(t=>t.classList.toggle("active",t.dataset.view===view));
         document.querySelectorAll(".view-section").forEach(s=>s.classList.remove("active"));
@@ -438,7 +450,8 @@ export async function initWmsPrintTemplateApp() {
 
       async function enterTemplateDesigner(t) {
         currentTemplateId=t.id;
-        selectedElementId=t.elements[0]?.id||null;
+        designerDraft = deepClone(t);
+        selectedElementId=designerDraft.elements[0]?.id||null;
         try {
           await recordDesignLog(t.id);
         } catch (error) {
@@ -488,7 +501,8 @@ export async function initWmsPrintTemplateApp() {
                 </span>
               </div>
               <div class="toolbar-actions">
-                <button class="btn btn-light-wms" id="backListBtn">返回列表</button>
+                <button class="btn btn-light-wms" id="backListBtn">返回</button>
+                <button class="btn btn-primary-wms" id="saveTemplateBtn">保存</button>
                 <button class="btn btn-light-wms" id="previewBtn">预览</button>
                 <button class="btn btn-light-wms" id="validateBtn">校验</button>
               </div>
@@ -504,7 +518,7 @@ export async function initWmsPrintTemplateApp() {
                   `).join("")}</div>
                 </div>
                 <div class="tool-section" style="overflow:auto;flex:1">
-                  <h3>字段字典</h3>
+                  <h3>模版字段</h3>
                   ${(FIELD_DICT[t.templateType]||[]).map(f=>`
                     <div class="field-chip" data-field="${f.code}" title="${escAttr(f.name)}">
                       <span>${f.name}</span>
@@ -657,7 +671,11 @@ export async function initWmsPrintTemplateApp() {
 
       function bindDesignerEvents() {
         const t = currentTemplate();
-        document.getElementById("backListBtn").onclick = ()=>{ persistCurrentTemplate(); setView("templates"); };
+        document.getElementById("backListBtn").onclick = ()=>{ designerDraft = null; setView("templates"); };
+        document.getElementById("saveTemplateBtn").onclick = async ()=>{
+          await persistCurrentTemplate();
+          toast("模板已保存");
+        };
         document.getElementById("designerTemplateName").oninput = e=>{
           t.templateName = e.target.value;
           t.updatedAt = nowText();
@@ -1041,7 +1059,7 @@ export async function initWmsPrintTemplateApp() {
         document.getElementById("view-fields").innerHTML = `
           <div class="field-dict-layout">
             <aside class="field-tree">
-              <div class="field-tree-head">字段字典 API</div>
+              <div class="field-tree-head">模版字段 API</div>
               <div class="field-tree-group">
                 <div class="field-tree-parent">模板字段</div>
                 ${resources.map(r=>`

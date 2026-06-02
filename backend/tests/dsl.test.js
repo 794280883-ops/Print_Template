@@ -48,5 +48,5 @@ test("validateTemplateDsl rejects fields outside dictionary", () => {
   }, locationFields);
 
   assert.equal(result.canPublish, false);
-  assert.match(result.errors[0].message, /不存在于当前模板类型字段字典/);
+  assert.match(result.errors[0].message, /不存在于当前模板类型模版字段/);
 });

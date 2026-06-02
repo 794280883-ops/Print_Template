@@ -24,7 +24,7 @@ WHERE template_type = 'CONTAINER'
 INSERT INTO print_field_dict
   (template_type, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled)
 VALUES
-  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',20,1),
+  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',0,'区域仓编码',20,1),
   ('CONTAINER','areaCode','物理仓编码','string','JP01',0,'物理仓编码',30,1),
   ('CONTAINER','purpose','用途','string','入库周转',0,'容器标签用途',40,1),
   ('CONTAINER','usageScene','使用场景','string','入库收货',0,'容器标签适用的业务使用场景',50,1)

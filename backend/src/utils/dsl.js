@@ -80,7 +80,7 @@ export function validateTemplateDsl(template, fieldRows = []) {
     if (!SUPPORTED_TYPES.includes(element.type)) errors.push({ message: `组件类型不支持：${element.type}`, elementId: element.id });
     if (element.textKind === "field" && !element.bindField) errors.push({ message: "动态文本没有绑定字段", elementId: element.id });
     if (["qrcode", "barcode"].includes(element.type) && !element.bindField) errors.push({ message: `${element.type === "qrcode" ? "二维码" : "条码"}没有绑定字段`, elementId: element.id });
-    if (element.bindField && !fieldCodes.has(element.bindField)) errors.push({ message: `字段 ${element.bindField} 不存在于当前模板类型字段字典`, elementId: element.id });
+    if (element.bindField && !fieldCodes.has(element.bindField)) errors.push({ message: `字段 ${element.bindField} 不存在于当前模板类型模版字段`, elementId: element.id });
 
     const x2 = Number(element.x) + Number(element.width);
     const y2 = Number(element.y) + Number(element.height);

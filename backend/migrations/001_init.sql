@@ -96,7 +96,7 @@ VALUES
   ('LOCATION','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',70),
   ('LOCATION','areaCode','物理仓编码','string','JP01',0,'物理仓编码',80),
   ('CONTAINER','containerCode','容器编码','string','C2P0001',1,'容器唯一编码，前缀 C2P 表示二级包装容器，后跟流水号',10),
-  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',20),
+  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',0,'区域仓编码',20),
   ('CONTAINER','areaCode','物理仓编码','string','JP01',0,'物理仓编码',30),
   ('CONTAINER','purpose','用途','string','入库周转',0,'容器标签用途',40),
   ('CONTAINER','usageScene','使用场景','string','入库收货',0,'容器标签适用的业务使用场景',50),
