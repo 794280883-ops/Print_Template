@@ -169,10 +169,10 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
   const textHeight = fontSize * 1.2;
   const textY = y + (h - textHeight) / 2;
 
+  // Use padded width to prevent CJK text clipping; left-align to avoid position shifts
   doc.text(value, x, textY, {
-    width: w,
-    align,
-    height: h,
+    width: w + 100,
+    align: "left",
     lineBreak: false,
   });
 }

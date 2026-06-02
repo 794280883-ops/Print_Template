@@ -565,10 +565,11 @@ export async function initWmsPrintTemplateApp() {
           </div>`;
         const bindSelect = `<select class="form-select" data-prop="bindField"><option value="">请选择字段</option>${fields.map(f=>`<option value="${f.code}" ${el.bindField===f.code?"selected":""}>${f.name}</option>`).join("")}</select>`;
         if (el.type==="text") {
-          // directionMark is always a field binding, simplify properties
+          // directionMark is always a field binding
           const isDirection = el.bindField === "directionMark";
           if (isDirection) el.textKind = "field";
-          const dirStyleProps = isDirection ? `
+          const isField = el.textKind === "field";
+          const textStyleProps = isDirection ? `
             <div class="form-grid" style="margin-top:10px">
               <div class="field"><label class="form-label">字号 px</label><input class="form-control" data-prop="fontSize" type="number" value="${el.fontSize||12}"></div>
               <label class="checkbox-row"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
@@ -576,10 +577,10 @@ export async function initWmsPrintTemplateApp() {
             </div>` : styleProps;
           return `${common}
             <div class="form-grid" style="margin-top:10px">
-              ${isDirection ? '' : `<div class="field"><label class="form-label">文本类型</label><select class="form-select" data-prop="textKind"><option value="static" ${el.textKind!=="field"?"selected":""}>静态文本</option><option value="field" ${el.textKind==="field"?"selected":""}>动态字段</option></select></div>`}
-              <div class="field"><label class="form-label">绑定字段</label>${bindSelect}</div>
-              ${isDirection ? '' : `<div class="field span"><label class="form-label">静态内容</label><textarea class="form-control" data-prop="text" rows="3">${escHtml(el.text||"")}</textarea></div>`}
-            </div>${dirStyleProps}`;
+              ${isDirection ? '' : `<div class="field"><label class="form-label">文本类型</label><select class="form-select" data-prop="textKind"><option value="static" ${!isField?"selected":""}>静态文本</option><option value="field" ${isField?"selected":""}>动态字段</option></select></div>`}
+              ${isField ? `<div class="field"><label class="form-label">绑定字段</label>${bindSelect}</div>` : ''}
+              ${!isField ? `<div class="field span"><label class="form-label">静态内容</label><textarea class="form-control" data-prop="text" rows="3">${escHtml(el.text||"")}</textarea></div>` : ''}
+            </div>${textStyleProps}`;
         }
         if (el.type==="qrcode"||el.type==="barcode") {
           if (!el.errorLevel) el.errorLevel = "M";
@@ -775,6 +776,7 @@ export async function initWmsPrintTemplateApp() {
         if (prop==="bold" || prop==="checked") value=Boolean(value);
         el[prop]=value;
         if (prop==="textKind"&&value==="field"&&!el.bindField) el.bindField=(FIELD_DICT[t.templateType]||[])[0]?.code||"";
+        if (prop==="textKind"&&value==="static") el.bindField="";
         if (prop==="bindField"&&value&&el.type==="text") el.textKind="field";
         el.x=clamp(Number(el.x||0),-Number(el.width||1)+1,t.size.width-1);
         el.y=clamp(Number(el.y||0),-Number(el.height||1)+1,t.size.height-1);
