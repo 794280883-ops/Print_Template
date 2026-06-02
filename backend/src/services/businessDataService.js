@@ -10,7 +10,6 @@ function toDto(row) {
     businessType: row.business_type,
     businessCode: row.business_code,
     fields: typeof row.business_data === "string" ? JSON.parse(row.business_data) : row.business_data,
-    createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }

@@ -4,10 +4,6 @@ export function listTemplates(filters = {}) {
   return request(`/templates${toQuery(filters)}`);
 }
 
-export function listOperationLogs() {
-  return request("/templates/operation-logs");
-}
-
 export function recordDesignLog(id) {
   return request(`/templates/${encodeURIComponent(id)}/design-log`, { method: "POST" });
 }
@@ -37,49 +33,31 @@ export function updateTemplateName(id, templateName) {
   });
 }
 
-export function publishTemplate(id) {
-  return request(`/templates/${encodeURIComponent(id)}/publish`, { method: "POST" });
+export function enableTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}/enable`, { method: "POST" });
 }
 
 export function disableTemplate(id) {
   return request(`/templates/${encodeURIComponent(id)}/disable`, { method: "POST" });
 }
 
-export function copyTemplate(id) {
-  return request(`/templates/${encodeURIComponent(id)}/copy`, { method: "POST" });
+export function batchUpdateTemplateStatus(ids, status) {
+  return request("/templates/status", {
+    method: "POST",
+    body: JSON.stringify({ ids, status }),
+  });
 }
 
-export function importTemplate(templateDsl) {
-  return request("/templates/import", {
-    method: "POST",
-    body: JSON.stringify(templateDsl),
-  });
+export function copyTemplate(id) {
+  return request(`/templates/${encodeURIComponent(id)}/copy`, { method: "POST" });
 }
 
 export function deleteTemplate(id) {
   return request(`/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export function exportTemplate(id) {
-  return request(`/templates/${encodeURIComponent(id)}/export`);
-}
-
 export function listFields(templateType) {
   return request(`/template/fields/${encodeURIComponent(String(templateType).toUpperCase())}`);
-}
-
-export function previewPrint(payload) {
-  return request("/print/preview", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function submitPrint(payload) {
-  return request("/print/submit", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
 }
 
 /**
@@ -97,15 +75,4 @@ export async function downloadPrintPdf(payload) {
     throw new Error(err.message || `HTTP ${res.status}`);
   }
   return res.blob();
-}
-
-export function listPrintLogs() {
-  return request("/print/logs");
-}
-
-export function generateAiTemplate(payload) {
-  return request("/ai/templates/generate", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
 }

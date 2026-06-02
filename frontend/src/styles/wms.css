@@ -277,6 +277,16 @@
       background: #f8fafd;
       text-align: center;
     }
+    .designer-rotation-select {
+      min-height: 30px;
+      width: 118px;
+      border: 1px solid var(--wms-line);
+      border-radius: var(--wms-radius-md);
+      padding: 3px 8px;
+      color: var(--wms-text);
+      font-size: 13px;
+      background: #fff;
+    }
     .designer-body {
       display: grid;
       grid-template-columns: 210px minmax(520px, 1fr) 310px;
@@ -567,12 +577,6 @@
       display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .api-param-example::before { content: "示例: "; color: var(--wms-muted); font-weight: 600; }
-
-    /* ── JSON ── */
-    .json-box {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 12px; min-height: 280px; width: 100%;
-    }
 
     /* ── Toast ── */
     .toast-host {

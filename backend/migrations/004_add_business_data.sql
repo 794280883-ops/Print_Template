@@ -3,7 +3,6 @@ CREATE TABLE IF NOT EXISTS business_data (
   business_type VARCHAR(32) NOT NULL COMMENT 'LOCATION/CONTAINER/PRODUCT',
   business_code VARCHAR(128) NOT NULL COMMENT '业务主键编码',
   business_data JSON NOT NULL COMMENT '业务字段键值对',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_type_code (business_type, business_code),
   INDEX idx_business_type (business_type),

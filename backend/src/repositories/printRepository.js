@@ -23,8 +23,3 @@ export async function getPrintLog(id) {
   const [[row]] = await pool.query("SELECT * FROM print_log WHERE id = ?", [id]);
   return row || null;
 }
-
-export async function listPrintLogs() {
-  const [rows] = await pool.query("SELECT * FROM print_log ORDER BY printed_at DESC, id DESC LIMIT 200");
-  return rows;
-}

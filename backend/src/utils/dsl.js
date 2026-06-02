@@ -1,22 +1,20 @@
 const SUPPORTED_TYPES = ["text", "qrcode", "barcode", "image", "line", "rect", "checkbox"];
 
-export function toTemplateDsl(template, elements = [], warehouses = []) {
+export function toTemplateDsl(template, elements = []) {
   return {
     id: String(template.id),
     dslVersion: "1.0",
     templateCode: template.template_code,
     templateName: template.template_name,
     templateType: template.template_type,
-    areaWarehouseCodes: warehouses.map((item) => item.warehouse_code),
     size: {
       width: Number(template.width_mm),
       height: Number(template.height_mm),
       unit: template.unit,
       dpi: Number(template.dpi),
     },
-    version: template.version,
+    printRotation: normalizePrintRotation(template.print_rotation),
     status: template.status,
-    isDefault: Boolean(template.is_default),
     remark: template.remark || "",
     updatedAt: template.updated_at,
     elements: elements.map(toElementDsl),
@@ -42,7 +40,6 @@ export function toElementDsl(row) {
     align: row.align_type,
     color: row.color,
     backgroundColor: row.background_color,
-    imageUrl: row.image_url,
     ...extra,
   };
 }
@@ -53,16 +50,14 @@ export function normalizeTemplateInput(input) {
     templateCode: input.templateCode,
     templateName: input.templateName,
     templateType: input.templateType,
-    areaWarehouseCodes: Array.isArray(input.areaWarehouseCodes) ? input.areaWarehouseCodes : [],
     size: {
       width: Number(size.width || input.widthMm || 0),
       height: Number(size.height || input.heightMm || 0),
       unit: size.unit || "mm",
       dpi: Number(size.dpi || 203),
     },
-    version: input.version || "V0",
-    status: input.status || "draft",
-    isDefault: Boolean(input.isDefault),
+    printRotation: normalizePrintRotation(input.printRotation),
+    status: normalizeTemplateStatus(input.status),
     remark: input.remark || "",
     elements: Array.isArray(input.elements) ? input.elements : [],
   };
@@ -75,6 +70,7 @@ export function validateTemplateDsl(template, fieldRows = []) {
   if (!String(template.templateName || "").trim()) errors.push({ message: "模板名称为空" });
   if (!["LOCATION", "CONTAINER", "PRODUCT"].includes(template.templateType)) errors.push({ message: "模板类型不在 LOCATION / CONTAINER / PRODUCT 中" });
   if (Number(template.size?.width) <= 0 || Number(template.size?.height) <= 0) errors.push({ message: "尺寸宽高必须大于 0" });
+  if (![0, 90, 180, 270].includes(Number(template.printRotation || 0))) errors.push({ message: "打印旋转角度必须为 0/90/180/270" });
   if (!Array.isArray(template.elements) || !template.elements.length) errors.push({ message: "画布内没有元素" });
 
   const ids = new Set();
@@ -97,7 +93,7 @@ export function validateTemplateDsl(template, fieldRows = []) {
 
 export function elementToRow(templateId, element) {
   const extra = { ...element };
-  for (const key of ["id", "type", "x", "y", "width", "height", "zIndex", "rotate", "textKind", "text", "bindField", "fontSize", "bold", "align", "color", "backgroundColor", "imageUrl"]) {
+  for (const key of ["id", "type", "x", "y", "width", "height", "zIndex", "rotate", "textKind", "text", "bindField", "fontSize", "bold", "align", "color", "backgroundColor"]) {
     delete extra[key];
   }
 
@@ -119,7 +115,6 @@ export function elementToRow(templateId, element) {
     align_type: element.align || null,
     color: element.color || null,
     background_color: element.backgroundColor || null,
-    image_url: element.imageUrl || null,
     extra_json: JSON.stringify(extra),
   };
 }
@@ -132,4 +127,14 @@ function parseJson(value, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function normalizePrintRotation(value) {
+  const angle = ((Number(value || 0) % 360) + 360) % 360;
+  return [0, 90, 180, 270].includes(angle) ? angle : 0;
+}
+
+function normalizeTemplateStatus(value) {
+  if (value === "enabled" || value === "published") return "enabled";
+  return "disabled";
 }

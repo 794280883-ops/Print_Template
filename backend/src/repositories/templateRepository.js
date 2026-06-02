@@ -16,10 +16,6 @@ export async function listTemplates(filters = {}) {
     where.push("status = :status");
     params.status = filters.status;
   }
-  if (filters.warehouse) {
-    where.push("id IN (SELECT template_id FROM print_template_warehouse WHERE warehouse_code = :warehouse)");
-    params.warehouse = filters.warehouse;
-  }
 
   const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -45,8 +41,7 @@ export async function getTemplateById(id, connection = pool) {
   const [[template]] = await connection.query("SELECT * FROM print_template WHERE id = ?", [id]);
   if (!template) return null;
   const [elements] = await connection.query("SELECT * FROM print_template_element WHERE template_id = ? ORDER BY z_index ASC, id ASC", [id]);
-  const [warehouses] = await connection.query("SELECT * FROM print_template_warehouse WHERE template_id = ? ORDER BY id ASC", [id]);
-  return toTemplateDsl(template, elements, warehouses);
+  return toTemplateDsl(template, elements);
 }
 
 export async function getTemplateRowByCode(templateCode, connection = pool) {
@@ -63,8 +58,8 @@ export async function createTemplate(template) {
   return withTransaction(async (connection) => {
     const [result] = await connection.query(
       `INSERT INTO print_template
-        (template_code, template_name, template_type, width_mm, height_mm, unit, dpi, version, status, is_default, remark, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Admin', 'Admin')`,
+        (template_code, template_name, template_type, width_mm, height_mm, unit, dpi, print_rotation, status, remark)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         template.templateCode,
         template.templateName,
@@ -73,9 +68,8 @@ export async function createTemplate(template) {
         template.size.height,
         template.size.unit,
         template.size.dpi,
-        template.version,
+        template.printRotation || 0,
         template.status,
-        template.isDefault ? 1 : 0,
         template.remark,
       ],
     );
@@ -88,8 +82,8 @@ export async function replaceTemplate(id, template) {
   return withTransaction(async (connection) => {
     await connection.query(
       `UPDATE print_template
-       SET template_code = ?, template_name = ?, template_type = ?, width_mm = ?, height_mm = ?, unit = ?, dpi = ?,
-           version = ?, status = ?, is_default = ?, remark = ?, updated_by = 'Admin'
+       SET template_code = ?, template_name = ?, template_type = ?, width_mm = ?, height_mm = ?, unit = ?, dpi = ?, print_rotation = ?,
+           status = ?, remark = ?
        WHERE id = ?`,
       [
         template.templateCode,
@@ -99,23 +93,20 @@ export async function replaceTemplate(id, template) {
         template.size.height,
         template.size.unit,
         template.size.dpi,
-        template.version,
+        template.printRotation || 0,
         template.status,
-        template.isDefault ? 1 : 0,
         template.remark,
         id,
       ],
     );
     await connection.query("DELETE FROM print_template_element WHERE template_id = ?", [id]);
-    await connection.query("DELETE FROM print_template_warehouse WHERE template_id = ?", [id]);
     await replaceTemplateChildren(connection, id, template);
     return getTemplateById(id, connection);
   });
 }
 
-export async function updateTemplateStatus(id, status, version = null) {
-  const params = version ? [status, version, id] : [status, id];
-  await pool.query(`UPDATE print_template SET status = ?${version ? ", version = ?" : ""}, updated_by = 'Admin' WHERE id = ?`, params);
+export async function updateTemplateStatus(id, status) {
+  await pool.query("UPDATE print_template SET status = ? WHERE id = ?", [status, id]);
   return getTemplateById(id);
 }
 
@@ -124,27 +115,23 @@ export async function deleteTemplate(id) {
     const [[template]] = await connection.query("SELECT * FROM print_template WHERE id = ?", [id]);
     if (!template) return null;
     await connection.query("DELETE FROM print_template_element WHERE template_id = ?", [id]);
-    await connection.query("DELETE FROM print_template_warehouse WHERE template_id = ?", [id]);
     await connection.query("DELETE FROM print_template WHERE id = ?", [id]);
     return { id, templateCode: template.template_code, templateName: template.template_name };
   });
 }
 
 export async function updateTemplateName(id, templateName) {
-  await pool.query("UPDATE print_template SET template_name = ?, updated_by = 'Admin' WHERE id = ?", [templateName, id]);
+  await pool.query("UPDATE print_template SET template_name = ? WHERE id = ?", [templateName, id]);
   return getTemplateById(id);
 }
 
 async function replaceTemplateChildren(connection, templateId, template) {
-  for (const code of template.areaWarehouseCodes) {
-    await connection.query("INSERT INTO print_template_warehouse (template_id, warehouse_code) VALUES (?, ?)", [templateId, code]);
-  }
   for (const element of template.elements) {
     const row = elementToRow(templateId, element);
     await connection.query(
       `INSERT INTO print_template_element
-        (template_id, element_uid, element_type, x, y, width, height, z_index, rotate, text_kind, text_content, bind_field, font_size, bold, align_type, color, background_color, image_url, extra_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (template_id, element_uid, element_type, x, y, width, height, z_index, rotate, text_kind, text_content, bind_field, font_size, bold, align_type, color, background_color, extra_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.template_id,
         row.element_uid,
@@ -163,7 +150,6 @@ async function replaceTemplateChildren(connection, templateId, template) {
         row.align_type,
         row.color,
         row.background_color,
-        row.image_url,
         row.extra_json,
       ],
     );

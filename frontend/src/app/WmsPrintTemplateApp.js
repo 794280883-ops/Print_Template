@@ -5,20 +5,16 @@ import {
   PX_PER_MM,
   STATUS_CLASS,
   STATUS_LABEL,
-  SUPPORTED_TYPES,
   TYPE_LABEL,
 } from '../data/constants.js';
-import { createSeedTemplates } from '../data/mockData.js';
 import {
   createTemplate as apiCreateTemplate,
   copyTemplate as apiCopyTemplate,
-  exportTemplate as apiExportTemplate,
-  generateAiTemplate,
-  importTemplate as apiImportTemplate,
   listFields as apiListFields,
-  listOperationLogs,
   listTemplates,
-  publishTemplate as apiPublishTemplate,
+  enableTemplate as apiEnableTemplate,
+  disableTemplate as apiDisableTemplate,
+  batchUpdateTemplateStatus as apiBatchUpdateTemplateStatus,
   recordDesignLog,
   updateTemplate,
   updateTemplateName,
@@ -32,13 +28,9 @@ import {
   updateBusinessData as apiUpdateBusinessData,
   deleteBusinessData as apiDeleteBusinessData,
 } from '../api/businessDataApi.js';
-import { sampleByType, fieldExists, toDsl, fromDsl } from '../services/templateDslService.js';
+import { sampleByType, fieldExists } from '../services/templateDslService.js';
+import { getPrintableTemplate, normalizePrintRotation } from '../services/printRotationService.js';
 import { validateTemplateDsl } from '../services/validationService.js';
-import { parseAiPromptToTemplate } from '../services/aiTemplateService.js';
-import { TemplateList } from '../pages/TemplateList.js';
-import { TemplateDesigner } from '../pages/TemplateDesigner.js';
-import { FieldDictionary } from '../pages/FieldDictionary.js';
-import { BusinessData } from '../pages/BusinessData.js';
 
 
 export async function initWmsPrintTemplateApp() {
@@ -63,12 +55,13 @@ export async function initWmsPrintTemplateApp() {
       let history = [];
       let future = [];
       let clipboardElement = null;
+      let autoSaveTimer = null;
       let filters = { name: "", type: "", status: "" };
       let pagination = { page: 1, pageSize: 20, total: 0 };
       let businessTab = "LOCATION";
       let selectedFieldType = "LOCATION";
+      let selectedTemplateRows = new Set();
       let selectedBusinessRows = new Set();
-      let aiDraft = null;
       let businessDataState = { rows: [], total: 0 };
       let businessDataFilters = { type: "LOCATION", keyword: "", page: 1, pageSize: 20 };
 
@@ -98,10 +91,8 @@ export async function initWmsPrintTemplateApp() {
       }
 
       function currentTemplate() { return state.templates.find(t=>t.id===currentTemplateId)||state.templates[0]; }
-      function addAppLog(action,target) { state.appLogs.unshift({time:nowText(),operator:"Admin",action,target}); }
-
       function defaultState() {
-        return { templates: [], appLogs: [] };
+        return { templates: [] };
       }
 
       async function hydrateState() {
@@ -109,9 +100,8 @@ export async function initWmsPrintTemplateApp() {
         loadError = "";
         render();
         try {
-          const [templatesResult, operationLogs, locationFields, containerFields, productFields] = await Promise.all([
+          const [templatesResult, locationFields, containerFields, productFields] = await Promise.all([
             listTemplates({ ...filters, page: pagination.page, pageSize: pagination.pageSize }),
-            listOperationLogs(),
             apiListFields("LOCATION"),
             apiListFields("CONTAINER"),
             apiListFields("PRODUCT"),
@@ -121,7 +111,7 @@ export async function initWmsPrintTemplateApp() {
           FIELD_DICT.PRODUCT = productFields;
           const templates = templatesResult.rows || templatesResult;
           pagination.total = templatesResult.total || 0;
-          state = { templates, appLogs: normalizeOperationLogs(operationLogs) };
+          state = { templates };
           currentTemplateId = currentTemplateId && templates.some((template) => template.id === currentTemplateId)
             ? currentTemplateId
             : templates[0]?.id || null;
@@ -139,15 +129,23 @@ export async function initWmsPrintTemplateApp() {
         }
       }
 
-      function saveState() {}
+      function saveState() {
+        if (currentView !== "designer") return;
+        const t = currentTemplate();
+        if (!t?.id || !String(t.templateName || "").trim()) return;
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(()=>persistCurrentTemplate(), 700);
+      }
 
-      function normalizeOperationLogs(rows) {
-        return (rows || []).map((row) => ({
-          time: row.operated_at || row.time || "",
-          operator: row.operator || "Admin",
-          action: row.action_name || row.action || "-",
-          target: `${row.target_name || row.targetName || "-"}${row.target_id ? ` #${row.target_id}` : ""}`,
-        }));
+      async function persistCurrentTemplate() {
+        const t = currentTemplate();
+        if (!t?.id || !String(t.templateName || "").trim()) return;
+        try {
+          const updated = await updateTemplate(t.id, deepClone(t));
+          replaceTemplate(updated);
+        } catch (error) {
+          toast(`自动保存失败：${error.message}`);
+        }
       }
 
       function renderLoadingOrError(root) {
@@ -181,7 +179,7 @@ export async function initWmsPrintTemplateApp() {
       // ══════════════════════════════════════
       //  TEMPLATE LIST
       // ══════════════════════════════════════
-      function renderTemplateList() { return TemplateList.renderTemplateList(appContext); }
+      function renderTemplateList() { return renderTemplateListLegacy(); }
 
       function renderTemplateListLegacy() {
         const root = document.getElementById("view-templates");
@@ -207,7 +205,7 @@ export async function initWmsPrintTemplateApp() {
                   <label class="form-label">状态</label>
                   <select class="form-select" id="filterStatus">
                     <option value="">全部</option>
-                    ${["draft","published"].map(v=>`<option value="${v}" ${filters.status===v?"selected":""}>${STATUS_LABEL[v]}</option>`).join("")}
+                    ${["enabled","disabled"].map(v=>`<option value="${v}" ${filters.status===v?"selected":""}>${STATUS_LABEL[v]}</option>`).join("")}
                   </select>
                 </div>
                 <div class="col-12">
@@ -224,12 +222,15 @@ export async function initWmsPrintTemplateApp() {
             <div class="section-head">
               <div class="toolbar-actions">
                 <button class="btn btn-primary-wms" id="newTemplateBtn">新增</button>
+                <button class="btn btn-light-wms" id="batchEnableBtn">启用</button>
+                <button class="btn btn-light-wms" id="batchDisableBtn">停用</button>
               </div>
               <span class="section-meta">共 ${pagination.total} 条</span>
             </div>
             <div class="table-wrap">
               <table class="table align-middle">
                 <thead><tr>
+                  <th class="selection-cell"><input id="checkAllTemplates" type="checkbox" ${rows.length && rows.every(t=>selectedTemplateRows.has(String(t.id)))?"checked":""}></th>
                   <th class="text-center" style="width:56px">序号</th>
                   <th class="text-start">模板编码</th>
                   <th class="text-start">模板名称</th>
@@ -241,6 +242,7 @@ export async function initWmsPrintTemplateApp() {
                 </tr></thead>
                 <tbody>${rows.map((t,i)=>`
                   <tr>
+                    <td class="selection-cell"><input class="templateRowCheck" type="checkbox" value="${t.id}" ${selectedTemplateRows.has(String(t.id))?"checked":""}></td>
                     <td class="text-center">${(pagination.page-1)*pagination.pageSize + i + 1}</td>
                     <td class="text-start"><span class="text-link action-link" data-act="design" data-id="${t.id}">${t.templateCode}</span></td>
                     <td class="text-start">${t.templateName}</td>
@@ -250,8 +252,9 @@ export async function initWmsPrintTemplateApp() {
                     <td class="text-start">${t.updatedAt}</td>
                     <td class="text-start">
                       <span class="action-link" data-act="preview" data-id="${t.id}">预览</span>
+                      ${t.status==="enabled"?`<span class="action-link" data-act="print" data-id="${t.id}">打印</span>`:""}
                       <span class="action-link" data-act="copy" data-id="${t.id}">复制</span>
-                      <span class="action-link" data-act="publish" data-id="${t.id}">发布</span>
+                      <span class="action-link" data-act="${t.status==="enabled"?"disable":"enable"}" data-id="${t.id}">${t.status==="enabled"?"停用":"启用"}</span>
                       <span class="action-link text-danger" data-act="delete" data-id="${t.id}">删除</span>
                     </td>
                   </tr>
@@ -291,7 +294,10 @@ export async function initWmsPrintTemplateApp() {
       }
 
       function bindTemplateListEvents() {
+        const currentRows = state.templates;
         document.getElementById("newTemplateBtn").onclick = openNewTemplateModal;
+        document.getElementById("batchEnableBtn").onclick = ()=>batchUpdateTemplates("enabled");
+        document.getElementById("batchDisableBtn").onclick = ()=>batchUpdateTemplates("disabled");
         document.getElementById("resetFilterBtn").onclick = ()=>{ filters={name:"",type:"",status:""}; pagination.page=1; setTimeout(()=>hydrateState(),0); };
 
         document.getElementById("filterForm").addEventListener("submit",e=>{
@@ -307,6 +313,24 @@ export async function initWmsPrintTemplateApp() {
 
         document.querySelectorAll("[data-act]").forEach(el=>{
           el.onclick = ()=>handleTemplateAction(el.dataset.act, el.dataset.id).catch(error=>toast(`操作失败：${error.message}`));
+        });
+
+        const checkAllTemplates = document.getElementById("checkAllTemplates");
+        if (checkAllTemplates) {
+          checkAllTemplates.onchange = e=>{
+            if (e.target.checked) currentRows.forEach(t=>selectedTemplateRows.add(String(t.id)));
+            else currentRows.forEach(t=>selectedTemplateRows.delete(String(t.id)));
+            renderTemplateList();
+          };
+        }
+
+        document.querySelectorAll(".templateRowCheck").forEach(chk=>{
+          chk.onchange = e=>{
+            if (e.target.checked) selectedTemplateRows.add(String(e.target.value));
+            else selectedTemplateRows.delete(String(e.target.value));
+            const allChk = document.getElementById("checkAllTemplates");
+            if (allChk) allChk.checked = currentRows.length > 0 && currentRows.every(t=>selectedTemplateRows.has(String(t.id)));
+          };
         });
 
         document.querySelectorAll(".pagination-btn").forEach(btn=>{
@@ -348,14 +372,31 @@ export async function initWmsPrintTemplateApp() {
         if (!t) return;
         if (action==="design") { await enterTemplateDesigner(t); }
         if (action==="preview") openPreviewModal(t);
+        if (action==="print") {
+          if (t.status !== "enabled") return toast("模板未启用，不能打印");
+          openPrintModal(t);
+        }
         if (action==="copy") {
           const copy = await apiCopyTemplate(t.id);
           state.templates.unshift(copy);
-          addAppLog("复制模板",copy.templateName);
-          saveState(); toast("已复制为草稿模板"); render();
+          saveState(); toast("已复制为停用模板"); render();
         }
-        if (action==="publish") publishTemplate(t);
+        if (action==="enable") enableTemplate(t);
+        if (action==="disable") disableTemplate(t);
         if (action==="delete") deleteTemplate(t);
+      }
+
+      async function batchUpdateTemplates(status) {
+        const ids = [...selectedTemplateRows];
+        if (!ids.length) return toast("请先勾选模板");
+        try {
+          const updated = await apiBatchUpdateTemplateStatus(ids, status);
+          selectedTemplateRows.clear();
+          toast(`已${status === "enabled" ? "启用" : "停用"} ${updated.length} 个模板`);
+          await hydrateState();
+        } catch (error) {
+          toast(`${status === "enabled" ? "启用" : "停用"}失败：${error.message}`);
+        }
       }
 
       async function deleteTemplate(t) {
@@ -367,7 +408,6 @@ export async function initWmsPrintTemplateApp() {
               await apiDeleteTemplate(t.id);
               state.templates = state.templates.filter(x => x.id !== t.id);
               if (currentTemplateId === t.id) currentTemplateId = state.templates[0]?.id || null;
-              addAppLog("删除模板", t.templateName);
               pagination.total = Math.max(0, pagination.total - 1);
               toast("模板已删除");
               render();
@@ -399,7 +439,6 @@ export async function initWmsPrintTemplateApp() {
       async function enterTemplateDesigner(t) {
         currentTemplateId=t.id;
         selectedElementId=t.elements[0]?.id||null;
-        addAppLog("进入模板设计",`${t.templateName} ${t.templateCode}`);
         try {
           await recordDesignLog(t.id);
         } catch (error) {
@@ -411,7 +450,7 @@ export async function initWmsPrintTemplateApp() {
       // ══════════════════════════════════════
       //  DESIGNER
       // ══════════════════════════════════════
-      function renderDesigner() { return TemplateDesigner.renderDesigner(appContext); }
+      function renderDesigner() { return renderDesignerLegacy(); }
 
       function renderDesignerLegacy() {
         const t = currentTemplate();
@@ -436,16 +475,22 @@ export async function initWmsPrintTemplateApp() {
                   <input class="designer-size-input" id="designerHeight" type="number" min="1" step="0.5" value="${num(t.size.height)}" title="高度 mm">
                   <span class="designer-unit-text" id="designerUnit">mm</span>
                 </span>
+                <span class="designer-size-editor" aria-label="打印旋转">
+                  <span class="designer-size-label">打印旋转</span>
+                  <select class="designer-rotation-select" id="designerPrintRotation" title="打印时整体旋转画布">
+                    ${[
+                      [0, "0°"],
+                      [90, "90° 顺时针"],
+                      [180, "180°"],
+                      [270, "270° 顺时针"],
+                    ].map(([value,label])=>`<option value="${value}" ${normalizePrintRotation(t.printRotation)===value?"selected":""}>${label}</option>`).join("")}
+                  </select>
+                </span>
               </div>
               <div class="toolbar-actions">
                 <button class="btn btn-light-wms" id="backListBtn">返回列表</button>
-                <button class="btn btn-light-wms" id="saveDraftBtn">保存草稿</button>
                 <button class="btn btn-light-wms" id="previewBtn">预览</button>
                 <button class="btn btn-light-wms" id="validateBtn">校验</button>
-                <button class="btn btn-primary-wms" id="publishBtn" ${validation.errors.length?"disabled":""}>发布</button>
-                <button class="btn btn-light-wms" id="designerImportBtn">导入 JSON</button>
-                <button class="btn btn-light-wms" id="designerExportBtn">导出 JSON</button>
-                <button class="btn btn-light-wms" id="designerAiBtn">AI 生成</button>
               </div>
             </div>
             <div class="designer-body">
@@ -612,7 +657,7 @@ export async function initWmsPrintTemplateApp() {
 
       function bindDesignerEvents() {
         const t = currentTemplate();
-        document.getElementById("backListBtn").onclick = ()=>setView("templates");
+        document.getElementById("backListBtn").onclick = ()=>{ persistCurrentTemplate(); setView("templates"); };
         document.getElementById("designerTemplateName").oninput = e=>{
           t.templateName = e.target.value;
           t.updatedAt = nowText();
@@ -630,7 +675,6 @@ export async function initWmsPrintTemplateApp() {
             replaceTemplate(updated);
             e.target.dataset.originalName = updated.templateName;
             e.target.value = updated.templateName;
-            addAppLog("编辑模板名称", updated.templateName);
             toast("模板名称已保存");
           } catch (error) {
             e.target.value = e.target.dataset.originalName || t.templateName;
@@ -646,33 +690,18 @@ export async function initWmsPrintTemplateApp() {
           saveState();
           renderDesigner();
         };
+        const applyPrintRotation = ()=>{
+          pushHistory();
+          t.printRotation = normalizePrintRotation(document.getElementById("designerPrintRotation").value);
+          t.updatedAt = nowText();
+          saveState();
+          renderDesigner();
+        };
         document.getElementById("designerWidth").onchange = applyTemplateSize;
         document.getElementById("designerHeight").onchange = applyTemplateSize;
-        document.getElementById("saveDraftBtn").onclick = async ()=>{
-          try {
-            const name = document.getElementById("designerTemplateName").value.trim();
-            if (!name) return toast("模板名称不能为空");
-            const width = Number(document.getElementById("designerWidth").value);
-            const height = Number(document.getElementById("designerHeight").value);
-            if (width <= 0 || height <= 0) return toast("宽度和长度必须大于 0");
-            t.templateName = name;
-            t.size = { ...t.size, width, height, unit: "mm" };
-            t.status="draft"; t.updatedAt=nowText();
-            const updated = await updateTemplate(t.id, t);
-            replaceTemplate(updated);
-            addAppLog("保存草稿",updated.templateName);
-            toast("已保存草稿");
-            render();
-          } catch (error) {
-            toast(`保存失败：${error.message}`);
-          }
-        };
+        document.getElementById("designerPrintRotation").onchange = applyPrintRotation;
         document.getElementById("previewBtn").onclick = ()=>openPreviewModal(t);
-        document.getElementById("validateBtn").onclick = ()=>{ validation=validateTemplateDsl(t); toast(validation.errors.length?`发现 ${validation.errors.length} 个错误`:"校验通过，可发布"); renderDesigner(); };
-        document.getElementById("publishBtn").onclick = ()=>publishTemplate(t);
-        document.getElementById("designerImportBtn").onclick = ()=>openJsonModal("import");
-        document.getElementById("designerExportBtn").onclick = ()=>openJsonModal("export",t);
-        document.getElementById("designerAiBtn").onclick = openAiModal;
+        document.getElementById("validateBtn").onclick = ()=>{ validation=validateTemplateDsl(t); toast(validation.errors.length?`发现 ${validation.errors.length} 个错误`:"校验通过，可启用"); renderDesigner(); };
         document.getElementById("zoomSelect").onchange = e=>{ zoom=Number(e.target.value); renderDesigner(); };
         document.getElementById("gridToggle").onchange = e=>{ showGrid=e.target.checked; renderDesigner(); };
         document.getElementById("deleteBtn").onclick = deleteSelected;
@@ -890,7 +919,7 @@ export async function initWmsPrintTemplateApp() {
         return `<div class="validation-panel">
           <div class="validation-head">
             <span>校验结果</span>
-            <span class="section-meta">${result.canPublish?"可发布":"不可发布"} · 错误 ${result.errors.length} / 警告 ${result.warnings.length} / 提示 ${result.tips.length}</span>
+            <span class="section-meta">${result.canPublish?"可启用":"不可启用"} · 错误 ${result.errors.length} / 警告 ${result.warnings.length} / 提示 ${result.tips.length}</span>
           </div>
           <div class="validation-list">
             ${all.length?all.map(item=>`<div class="validation-item ${item.level}" ${item.elementId?`data-el="${item.elementId}"`:""}>
@@ -900,25 +929,35 @@ export async function initWmsPrintTemplateApp() {
         </div>`;
       }
 
-      async function publishTemplate(t) {
+      async function enableTemplate(t) {
         try {
-          const updated = await apiPublishTemplate(t.id);
+          const updated = await apiEnableTemplate(t.id);
           replaceTemplate(updated);
-          addAppLog("发布模板",`${updated.templateName} ${updated.version}`);
-          toast("模板已发布");
+          toast("模板已启用");
           render();
         } catch (error) {
           const result = error.response?.data;
           if (error.response?.code === 40002 && result) {
-            validation=result; currentTemplateId=t.id; setView("designer"); toast("存在错误，不能发布");
+            validation=result; currentTemplateId=t.id; setView("designer"); toast("存在错误，不能启用");
             return;
           }
-          toast(`发布失败：${error.message}`);
+          toast(`启用失败：${error.message}`);
+        }
+      }
+
+      async function disableTemplate(t) {
+        try {
+          const updated = await apiDisableTemplate(t.id);
+          replaceTemplate(updated);
+          toast("模板已停用");
+          render();
+        } catch (error) {
+          toast(`停用失败：${error.message}`);
         }
       }
 
       // ══════════════════════════════════════
-      //  AI / JSON / MODALS
+      //  TEMPLATE MODALS
       // ══════════════════════════════════════
       function openNewTemplateModal() {
         document.getElementById("genericModalTitle").textContent = "新增模板";
@@ -942,14 +981,13 @@ export async function initWmsPrintTemplateApp() {
           const tpl = {
             id:uid("tpl"), dslVersion:"1.0", templateCode:`TPL_${type}_${Date.now().toString().slice(-6)}`,
             templateName:name, templateType:type,
-            areaWarehouseCodes: [],
             size: defaultSize,
-            version:"V0", status:"draft", isDefault:false, remark:document.getElementById("newRemark").value.trim(), updatedAt:nowText(), elements:[]
+            printRotation: 0,
+            status:"disabled", remark:document.getElementById("newRemark").value.trim(), updatedAt:nowText(), elements:[]
           };
           try {
             const created = await apiCreateTemplate(tpl);
             state.templates.unshift(created); currentTemplateId=created.id; selectedElementId=null;
-            addAppLog("新增模板",created.templateName);
             genericModal.hide(); setView("designer");
           } catch (error) {
             toast(`新增失败：${error.message}`);
@@ -957,97 +995,16 @@ export async function initWmsPrintTemplateApp() {
         };
       }
 
-      async function openJsonModal(mode, template=currentTemplate()) {
-        const isExport = mode==="export";
-        let json = "";
-        if (isExport) {
-          try {
-            json = JSON.stringify(await apiExportTemplate(template.id),null,2);
-          } catch (error) {
-            toast(`导出失败：${error.message}`);
-            return;
-          }
-        }
-        document.getElementById("largeModalTitle").textContent = isExport?"导出 JSON":"导入 JSON";
-        document.getElementById("largeModalBody").innerHTML = `
-          <div class="notice">${isExport?"当前模板 DSL JSON，可直接复制备份。":"粘贴模板 DSL JSON，导入后会生成草稿模板，不会直接发布。"}</div>
-          <textarea id="jsonText" class="form-control json-box" placeholder="粘贴 JSON">${escHtml(json)}</textarea>`;
-        document.getElementById("largeModalFoot").innerHTML = `
-          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">关闭</button>
-          ${isExport?`<button class="btn btn-primary-wms" id="copyJsonBtn">复制 JSON</button>`:`<button class="btn btn-primary-wms" id="applyJsonBtn">导入为草稿</button>`}`;
-        largeModal.show();
-
-        if (isExport) {
-          document.getElementById("copyJsonBtn").onclick = async ()=>{
-            await navigator.clipboard?.writeText(document.getElementById("jsonText").value);
-            toast("JSON 已复制");
-          };
-        } else {
-          document.getElementById("applyJsonBtn").onclick = async ()=>{
-            try {
-              const raw=JSON.parse(document.getElementById("jsonText").value);
-              const tpl=fromDsl(raw, uid, nowText);
-              const result=validateTemplateDsl(tpl);
-              if (raw.dslVersion&&raw.dslVersion!=="1.0") return toast("DSL 版本不兼容");
-              if (result.errors.some(e=>/尺寸宽高|模板类型/.test(e.message))) return toast("导入失败：模板类型或尺寸不合法");
-              tpl.id=uid("tpl"); tpl.templateCode=raw.templateCode||`TPL_IMPORT_${Date.now().toString().slice(-6)}`;
-              tpl.templateName=`${tpl.templateName||"导入模板"}-导入草稿`; tpl.status="draft"; tpl.version="V0"; tpl.updatedAt=nowText();
-              const created = await apiImportTemplate(tpl);
-              state.templates.unshift(created); currentTemplateId=created.id; selectedElementId=created.elements[0]?.id||null;
-              addAppLog("导入 JSON",created.templateName);
-              largeModal.hide(); setView("designer"); toast("导入成功，已生成草稿");
-            } catch(err) { toast(`JSON 格式错误：${err.message}`); }
-          };
-        }
-      }
-
-      function openAiModal() {
-        document.getElementById("largeModalTitle").textContent = "AI 生成模板草稿";
-        document.getElementById("largeModalBody").innerHTML = `
-          <div class="notice">AI 为 mock 逻辑，只生成模板草稿。生成内容需人工确认并通过校验后发布。</div>
-          <div class="row">
-            <div class="col-md-6 mb-3"><label class="form-label">模板类型</label><select class="form-select" id="aiType"><option value="LOCATION">库位模板</option><option value="CONTAINER">容器模板</option><option value="PRODUCT">商品模板</option></select></div>
-            <div class="col-md-6 mb-3"><label class="form-label">生成状态</label><input class="form-control" disabled value="草稿"></div>
-            <div class="col-12 mb-3"><label class="form-label">自然语言描述</label><textarea class="form-control" id="aiPrompt" rows="5">帮我生成一个 10×5cm 的库位标签，顶部居中显示库位编码，左下角放二维码，右下角显示方向标，左上角显示库位前缀，黑底白字，加粗。</textarea></div>
-            <div class="col-12 mb-3"><label class="form-label">JSON 预览</label><textarea id="aiJson" class="form-control json-box" placeholder="点击生成后展示系统 DSL JSON"></textarea></div>
-          </div>`;
-        document.getElementById("largeModalFoot").innerHTML = `
-          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
-          <button class="btn btn-light-wms" id="aiGenerateBtn">生成 JSON</button>
-          <button class="btn btn-primary-wms" id="aiApplyBtn" disabled>应用到画布</button>`;
-        largeModal.show();
-
-        document.getElementById("aiGenerateBtn").onclick = async ()=>{
-          try {
-            aiDraft = await generateAiTemplate({ prompt: document.getElementById("aiPrompt").value, templateType: document.getElementById("aiType").value });
-            document.getElementById("aiJson").value = JSON.stringify(toDsl(aiDraft),null,2);
-            document.getElementById("aiApplyBtn").disabled = false;
-          } catch (error) {
-            toast(`AI 生成失败：${error.message}`);
-          }
-        };
-        document.getElementById("aiApplyBtn").onclick = async ()=>{
-          if (!aiDraft) return;
-          aiDraft.validationResult = validateTemplateDsl(aiDraft);
-          try {
-            const created = await apiCreateTemplate(aiDraft);
-            state.templates.unshift(created); currentTemplateId=created.id; selectedElementId=created.elements[0]?.id||null;
-            addAppLog("AI 生成草稿",created.templateName);
-            largeModal.hide(); setView("designer"); toast("AI 已生成模板草稿，请校验后发布");
-          } catch (error) {
-            toast(`AI 草稿保存失败：${error.message}`);
-          }
-        };
-      }
-
       function openPreviewModal(t, data=sampleByType(t.templateType)) {
+        const printTemplate = getPrintableTemplate(t);
+        const rotation = normalizePrintRotation(t.printRotation);
         const oldZoom=zoom;
-        const previewZoom=Math.min(2,360/(t.size.width*PX_PER_MM));
+        const previewZoom=Math.min(2,360/(printTemplate.size.width*PX_PER_MM));
         zoom=previewZoom;
         const html = `<div class="preview-wrap">
           <div class="preview-card">
-            <div class="label-canvas" style="width:${t.size.width*PX_PER_MM*zoom}px;height:${t.size.height*PX_PER_MM*zoom}px">
-              ${t.elements.map(el=>renderElementHtml(el,t,true,data)).join("")}
+            <div class="label-canvas" style="width:${printTemplate.size.width*PX_PER_MM*zoom}px;height:${printTemplate.size.height*PX_PER_MM*zoom}px">
+              ${printTemplate.elements.map(el=>renderElementHtml(el,printTemplate,true,data)).join("")}
             </div>
           </div>
           <div class="card-panel" style="box-shadow:none">
@@ -1056,7 +1013,7 @@ export async function initWmsPrintTemplateApp() {
               <div><b>模板名称：</b>${t.templateName}</div>
               <div><b>模板类型：</b>${TYPE_LABEL[t.templateType]}</div>
               <div><b>尺寸：</b>${t.size.width} × ${t.size.height}${t.size.unit}</div>
-              <div><b>版本：</b>${t.version}</div>
+              <div><b>打印旋转：</b>${rotation}°${rotation ? `，输出尺寸 ${printTemplate.size.width} × ${printTemplate.size.height}${printTemplate.size.unit}` : ""}</div>
               <div><b>状态：</b><span class="status-pill ${STATUS_CLASS[t.status]}">${STATUS_LABEL[t.status]}</span></div>
             </div>
           </div>
@@ -1071,7 +1028,7 @@ export async function initWmsPrintTemplateApp() {
       // ══════════════════════════════════════
       //  FIELDS
       // ══════════════════════════════════════
-      function renderFields() { return FieldDictionary.renderFields(appContext); }
+      function renderFields() { return renderFieldsLegacy(); }
 
       function renderFieldsLegacy() {
         const resources = [
@@ -1143,7 +1100,7 @@ export async function initWmsPrintTemplateApp() {
         return "";
       }
 
-      function renderBusiness() { return BusinessData.renderBusinessData(appContext); }
+      function renderBusiness() { return renderBusinessData(); }
 
       async function renderBusinessData() {
         const root = document.getElementById("view-business");
@@ -1387,14 +1344,15 @@ export async function initWmsPrintTemplateApp() {
       }
 
       async function openPrintModal(template = null, preselectedData = null) {
-        // Find all published templates matching the current business type
-        const publishedTemplates = state.templates.filter(
-          t => t.templateType === businessTab && t.status === "published"
+        const printType = template?.templateType || businessTab;
+        // Only enabled templates can be printed.
+        const enabledTemplates = state.templates.filter(
+          t => t.templateType === printType && t.status === "enabled"
         );
 
-        if (!publishedTemplates.length) return toast(`暂无${TYPE_LABEL[businessTab]||businessTab}类型的已发布模板`);
-        // Default to first published template when multiple exist (user can switch via dropdown)
-        if (!template) template = publishedTemplates[0];
+        if (template && template.status !== "enabled") return toast("模板未启用，不能打印");
+        if (!enabledTemplates.length) return toast(`暂无${TYPE_LABEL[printType]||printType}类型的启用模板`);
+        if (!template) template = enabledTemplates[0];
 
         // Track the currently active template (may change via dropdown)
         let activeTemplate = template;
@@ -1415,11 +1373,11 @@ export async function initWmsPrintTemplateApp() {
         let printSelectedRows = new Set(data.map((_, i) => String(i)));
 
         // Template selector for multiple templates of same type
-        const templateSelector = publishedTemplates.length > 1 ? `
+        const templateSelector = enabledTemplates.length > 1 ? `
           <div class="col-md-6 mb-3">
             <label class="form-label">选择模板 <span style="color:red">*</span></label>
             <select class="form-select" id="printTemplateSelect">
-              ${publishedTemplates.map(t => `<option value="${t.id}" ${t.id === activeTemplate.id ? "selected" : ""}>${escHtml(t.templateName)}</option>`).join("")}
+              ${enabledTemplates.map(t => `<option value="${t.id}" ${t.id === activeTemplate.id ? "selected" : ""}>${escHtml(t.templateName)}</option>`).join("")}
             </select>
           </div>` : `
           <div class="col-md-6 mb-3"><label class="form-label">模板名称</label><input class="form-control" disabled value="${escAttr(activeTemplate.templateName)}"></div>`;
@@ -1456,9 +1414,10 @@ export async function initWmsPrintTemplateApp() {
           const selected=selectedRows();
           const box=document.getElementById("printPreview");
           if (!tpl || !selected.length) { box.innerHTML=`<div class="empty-state">请选择业务数据</div>`; return; }
+          const printTemplate = getPrintableTemplate(tpl);
           const oldZoom=zoom;
-          zoom=Math.min(1.4,340/(tpl.size.width*PX_PER_MM));
-          box.innerHTML=`<div class="label-canvas" style="width:${tpl.size.width*PX_PER_MM*zoom}px;height:${tpl.size.height*PX_PER_MM*zoom}px">${tpl.elements.map(el=>renderElementHtml(el,tpl,true,selected[0])).join("")}</div>`;
+          zoom=Math.min(1.4,340/(printTemplate.size.width*PX_PER_MM));
+          box.innerHTML=`<div class="label-canvas" style="width:${printTemplate.size.width*PX_PER_MM*zoom}px;height:${printTemplate.size.height*PX_PER_MM*zoom}px">${printTemplate.elements.map(el=>renderElementHtml(el,printTemplate,true,selected[0])).join("")}</div>`;
           zoom=oldZoom;
         };
         drawPreview();
@@ -1467,7 +1426,7 @@ export async function initWmsPrintTemplateApp() {
         const templateSelect = document.getElementById("printTemplateSelect");
         if (templateSelect) {
           templateSelect.onchange = () => {
-            activeTemplate = publishedTemplates.find(t => t.id === templateSelect.value) || activeTemplate;
+            activeTemplate = enabledTemplates.find(t => t.id === templateSelect.value) || activeTemplate;
             drawPreview();
           };
         }
@@ -1484,6 +1443,7 @@ export async function initWmsPrintTemplateApp() {
         document.getElementById("printConfirmBtn").onclick=async ()=>{
           const tpl=activeTemplate;
           if (!tpl) return toast("无可用模板");
+          if (tpl.status !== "enabled") return toast("模板未启用，不能打印");
           const selected=selectedRows();
           if (!selected.length) return toast("请先选择业务数据");
           const copies=Math.max(1,Number(document.getElementById("printCopies").value||1));
@@ -1515,7 +1475,6 @@ export async function initWmsPrintTemplateApp() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            addAppLog("模板打印",`${tpl.templateName} × ${selected.length*copies}`);
             genericModal.hide(); toast("打印成功，PDF 已下载");
           } catch (error) {
             toast(`打印失败：${error.message}`);
@@ -1531,45 +1490,6 @@ export async function initWmsPrintTemplateApp() {
         if (input.type==="checkbox") return input.checked;
         return input.value;
       }
-
-      const appContext = {
-        get state() { return state; },
-        set state(next) { state = next; },
-        get currentView() { return currentView; },
-        set currentView(next) { currentView = next; },
-        get currentTemplateId() { return currentTemplateId; },
-        set currentTemplateId(next) { currentTemplateId = next; },
-        get selectedElementId() { return selectedElementId; },
-        set selectedElementId(next) { selectedElementId = next; },
-        get zoom() { return zoom; },
-        set zoom(next) { zoom = next; },
-        get showGrid() { return showGrid; },
-        set showGrid(next) { showGrid = next; },
-        get validation() { return validation; },
-        set validation(next) { validation = next; },
-        get dragState() { return dragState; },
-        set dragState(next) { dragState = next; },
-        get history() { return history; },
-        set history(next) { history = next; },
-        get future() { return future; },
-        set future(next) { future = next; },
-        get clipboardElement() { return clipboardElement; },
-        set clipboardElement(next) { clipboardElement = next; },
-        get filters() { return filters; },
-        set filters(next) { filters = next; },
-        get businessTab() { return businessTab; },
-        set businessTab(next) { businessTab = next; },
-        get selectedBusinessRows() { return selectedBusinessRows; },
-        set selectedBusinessRows(next) { selectedBusinessRows = next; },
-        get aiDraft() { return aiDraft; },
-        set aiDraft(next) { aiDraft = next; },
-        get businessDataState() { return businessDataState; },
-        get businessDataFilters() { return businessDataFilters; },
-        renderTemplateListLegacy,
-        renderDesignerLegacy,
-        renderFieldsLegacy,
-        renderBusinessData,
-      };
 
       // ── Init ──
       function initTime() {
@@ -1598,7 +1518,7 @@ export async function initWmsPrintTemplateApp() {
       document.getElementById("resetDemoBtn")?.addEventListener("click", ()=>{
         if (!confirm("确认重新加载后端数据？")) return;
         state=defaultState(); currentTemplateId=null;
-        selectedElementId=null; selectedBusinessRows.clear();
+        selectedElementId=null; selectedTemplateRows.clear(); selectedBusinessRows.clear();
         hydrateState(); setView("templates");
       });
 

@@ -11,6 +11,7 @@ export function validateTemplateDsl(templateDsl) {
   if (!String(template.templateName || "").trim()) errors.push({ message: "模板名称为空" });
   if (!["LOCATION", "CONTAINER", "PRODUCT"].includes(template.templateType)) errors.push({ message: "模板类型不在 LOCATION / CONTAINER / PRODUCT 中" });
   if (!template.size || Number(template.size.width) <= 0 || Number(template.size.height) <= 0) errors.push({ message: "尺寸宽高必须大于 0" });
+  if (![0, 90, 180, 270].includes(Number(template.printRotation || 0))) errors.push({ message: "打印旋转角度必须为 0/90/180/270" });
   if (!Array.isArray(template.elements) || !template.elements.length) errors.push({ message: "画布内没有元素" });
 
   const ids = new Set();
@@ -39,6 +40,5 @@ export function validateTemplateDsl(templateDsl) {
   });
 
   if (!hasCode) tips.push({ message: "模板没有二维码或条码" });
-  if (template.aiNotice) tips.push({ message: "AI 生成内容需人工确认后发布" });
   return { errors, warnings, tips, canPublish: errors.length === 0 };
 }

@@ -9,22 +9,14 @@ export const TYPE_LABEL = {
 };
 
 export const STATUS_LABEL = {
-  draft: "草稿",
-  published: "已发布",
-  disabled: "已停用",
+  enabled: "启用",
+  disabled: "停用",
 };
 
 export const STATUS_CLASS = {
-  published: "is-success",
-  draft: "is-warning",
+  enabled: "is-success",
   disabled: "is-danger",
 };
-
-export const WAREHOUSES = [
-  { code: "DE-BER-01", name: "德国仓" },
-  { code: "US-LAX-01", name: "洛杉矶仓" },
-  { code: "DE-FRA-01", name: "法兰克福仓" },
-];
 
 export const FIELD_DICT = {
   LOCATION: [

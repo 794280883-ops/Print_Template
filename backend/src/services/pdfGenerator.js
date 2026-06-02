@@ -22,9 +22,11 @@ const CJK_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf";
 export async function generateTemplatePdf(template, dataRows, options = {}) {
   const copies = Math.max(1, options.copies || 1);
   const { size, elements = [] } = template;
+  const printRotation = normalizePrintRotation(template.printRotation);
+  const outputSize = getPrintedSize(size, printRotation);
 
-  const pageWidthPt = size.width * MM_TO_PT;
-  const pageHeightPt = size.height * MM_TO_PT;
+  const pageWidthPt = outputSize.width * MM_TO_PT;
+  const pageHeightPt = outputSize.height * MM_TO_PT;
 
   const doc = new PDFDocument({
     size: [pageWidthPt, pageHeightPt],
@@ -56,20 +58,75 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
   };
 
   // Sort elements by zIndex
-  const sorted = [...elements].sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
+  const sorted = transformElementsForPrint(elements, size, printRotation)
+    .sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
 
   // Generate pages
   for (const dataRow of dataRows) {
     if (!dataRow) continue;
     for (let copy = 0; copy < copies; copy++) {
       doc.addPage({ size: [pageWidthPt, pageHeightPt], margin: 0 });
-      await renderPage(doc, sorted, dataRow, size, ensureCjkFont);
+      await renderPage(doc, sorted, dataRow, outputSize, ensureCjkFont);
     }
   }
 
   doc.end();
 
   return pdfPromise;
+}
+
+function normalizePrintRotation(value) {
+  const angle = ((Number(value || 0) % 360) + 360) % 360;
+  return [0, 90, 180, 270].includes(angle) ? angle : 0;
+}
+
+function getPrintedSize(size, rotation) {
+  if (rotation === 90 || rotation === 270) {
+    return { ...size, width: Number(size.height), height: Number(size.width) };
+  }
+  return { ...size, width: Number(size.width), height: Number(size.height) };
+}
+
+function transformElementsForPrint(elements, size, rotation) {
+  if (!rotation) return [...elements];
+  const width = Number(size.width);
+  const height = Number(size.height);
+  return elements.map((element) => {
+    const x = Number(element.x || 0);
+    const y = Number(element.y || 0);
+    const w = Number(element.width || 1);
+    const h = Number(element.height || 1);
+    const centerX = x + w / 2;
+    const centerY = y + h / 2;
+    let nextCenterX = centerX;
+    let nextCenterY = centerY;
+
+    if (rotation === 90) {
+      nextCenterX = height - centerY;
+      nextCenterY = centerX;
+    } else if (rotation === 180) {
+      nextCenterX = width - centerX;
+      nextCenterY = height - centerY;
+    } else if (rotation === 270) {
+      nextCenterX = centerY;
+      nextCenterY = width - centerX;
+    }
+
+    return {
+      ...element,
+      x: round2(nextCenterX - w / 2),
+      y: round2(nextCenterY - h / 2),
+      rotate: normalizeElementRotation(Number(element.rotate || 0) + rotation),
+    };
+  });
+}
+
+function normalizeElementRotation(value) {
+  return ((Number(value || 0) % 360) + 360) % 360;
+}
+
+function round2(value) {
+  return Math.round(Number(value) * 100) / 100;
 }
 
 async function renderPage(doc, elements, data, templateSize, ensureCjkFont) {

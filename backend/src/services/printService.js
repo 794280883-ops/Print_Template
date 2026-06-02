@@ -1,22 +1,7 @@
 import * as printRepository from "../repositories/printRepository.js";
 import { getTemplate } from "./templateService.js";
 import { generateTemplatePdf } from "./pdfGenerator.js";
-
-export async function previewPrint(payload) {
-  const template = await getTemplate(payload.templateId);
-  return {
-    template,
-    data: payload.data || {},
-  };
-}
-
-export async function submitPrint(payload) {
-  return printRepository.createPrintLog(payload);
-}
-
-export async function listPrintLogs() {
-  return printRepository.listPrintLogs();
-}
+import { appError } from "../utils/response.js";
 
 /**
  * Generate a PDF file for a template filled with business data.
@@ -27,6 +12,7 @@ export async function generatePdf(payload) {
 
   // Fetch the full template with elements
   const template = await getTemplate(templateId);
+  assertTemplateEnabled(template);
 
   // Generate PDF
   const pdfBuffer = await generateTemplatePdf(template, rows, { copies });
@@ -49,4 +35,10 @@ export async function generatePdf(payload) {
   });
 
   return { pdfBuffer, logEntry, templateName: template.templateName };
+}
+
+function assertTemplateEnabled(template) {
+  if (template.status !== "enabled") {
+    throw appError("模板未启用，不能打印", 40004, 400);
+  }
 }

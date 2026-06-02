@@ -8,10 +8,6 @@ export async function listTemplates(filters) {
   return templateRepository.listTemplates(filters);
 }
 
-export async function listOperationLogs() {
-  return operationLogRepository.listOperationLogs();
-}
-
 export async function getTemplate(id) {
   const template = await templateRepository.getTemplateById(id);
   if (!template) throw appError("模板不存在", 40400, 404);
@@ -46,7 +42,7 @@ export async function updateTemplate(id, input) {
   const duplicatedName = await templateRepository.getTemplateRowByName(template.templateName);
   if (duplicatedName && Number(duplicatedName.id) !== Number(id)) throw appError("模板名称重复", 40003, 409);
   const updated = await templateRepository.replaceTemplate(id, template);
-  await operationLogRepository.addOperationLog({ actionName: "保存草稿", targetId: updated.id, targetName: updated.templateName, afterJson: updated });
+  await operationLogRepository.addOperationLog({ actionName: "保存模板", targetId: updated.id, targetName: updated.templateName, afterJson: updated });
   return updated;
 }
 
@@ -67,22 +63,52 @@ export async function updateTemplateName(id, input) {
   return updated;
 }
 
-export async function publishTemplate(id) {
+export async function enableTemplate(id) {
   const template = await getTemplate(id);
   const fields = await listFields(template.templateType);
   const result = validateTemplateDsl(template, fields);
   if (result.errors.length) throw appError("DSL 校验失败", 40002, 400, result);
-  const version = template.status === "published" ? nextVersion(template.version) : template.version === "V0" ? "V1" : template.version;
-  const updated = await templateRepository.updateTemplateStatus(id, "published", version);
-  await operationLogRepository.addOperationLog({ actionName: "发布模板", targetId: updated.id, targetName: updated.templateName, beforeJson: template, afterJson: updated });
+  const updated = await templateRepository.updateTemplateStatus(id, "enabled");
+  await operationLogRepository.addOperationLog({ actionName: "启用模板", targetId: updated.id, targetName: updated.templateName, beforeJson: template, afterJson: updated });
   return updated;
 }
 
 export async function disableTemplate(id) {
   const template = await getTemplate(id);
-  const nextStatus = template.status === "disabled" ? "draft" : "disabled";
-  const updated = await templateRepository.updateTemplateStatus(id, nextStatus);
-  await operationLogRepository.addOperationLog({ actionName: nextStatus === "disabled" ? "停用模板" : "启用为草稿", targetId: updated.id, targetName: updated.templateName, beforeJson: template, afterJson: updated });
+  const updated = await templateRepository.updateTemplateStatus(id, "disabled");
+  await operationLogRepository.addOperationLog({ actionName: "停用模板", targetId: updated.id, targetName: updated.templateName, beforeJson: template, afterJson: updated });
+  return updated;
+}
+
+export async function updateTemplatesStatus(input) {
+  const ids = Array.isArray(input.ids) ? input.ids.filter(Boolean) : [];
+  const status = String(input.status || "");
+  if (!ids.length) throw appError("请选择模板", 40000, 400);
+  if (!["enabled", "disabled"].includes(status)) throw appError("状态值必须为 enabled/disabled", 40000, 400);
+
+  const templates = [];
+  for (const id of ids) {
+    const template = await getTemplate(id);
+    templates.push(template);
+    if (status === "enabled") {
+      const fields = await listFields(template.templateType);
+      const result = validateTemplateDsl(template, fields);
+      if (result.errors.length) throw appError(`模板「${template.templateName}」校验失败，不能启用`, 40002, 400, result);
+    }
+  }
+
+  const updated = [];
+  for (const template of templates) {
+    const next = await templateRepository.updateTemplateStatus(template.id, status);
+    await operationLogRepository.addOperationLog({
+      actionName: status === "enabled" ? "启用模板" : "停用模板",
+      targetId: next.id,
+      targetName: next.templateName,
+      beforeJson: template,
+      afterJson: next,
+    });
+    updated.push(next);
+  }
   return updated;
 }
 
@@ -92,43 +118,12 @@ export async function copyTemplate(id) {
     ...template,
     templateCode: `TPL_COPY_${Date.now().toString().slice(-6)}`,
     templateName: `${template.templateName}-副本`,
-    version: "V0",
-    status: "draft",
-    isDefault: false,
-    areaWarehouseCodes: [],
+    status: "disabled",
     elements: template.elements.map((element) => ({ ...element, id: `${element.type}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}` })),
   };
   const created = await templateRepository.createTemplate(normalizeTemplateInput(copy));
   await operationLogRepository.addOperationLog({ actionName: "复制模板", targetId: created.id, targetName: created.templateName, beforeJson: template, afterJson: created });
   return created;
-}
-
-export async function importTemplate(input) {
-  const template = normalizeTemplateInput({
-    ...input,
-    templateCode: input.templateCode || `TPL_IMPORT_${Date.now().toString().slice(-6)}`,
-    templateName: `${input.templateName || "导入模板"}-导入草稿`,
-    version: "V0",
-    status: "draft",
-    isDefault: false,
-  });
-  await ensureTemplateCodeUnique(template.templateCode);
-  const created = await templateRepository.createTemplate(template);
-  await operationLogRepository.addOperationLog({ actionName: "导入 JSON", targetId: created.id, targetName: created.templateName, afterJson: created });
-  return created;
-}
-
-export async function exportTemplate(id) {
-  const template = await getTemplate(id);
-  return {
-    dslVersion: "1.0",
-    templateCode: template.templateCode,
-    templateName: template.templateName,
-    templateType: template.templateType,
-    size: template.size,
-    areaWarehouseCodes: template.areaWarehouseCodes,
-    elements: template.elements,
-  };
 }
 
 export async function deleteTemplate(id) {
@@ -153,8 +148,4 @@ async function ensureTemplateNameUnique(templateName) {
   if (!templateName) throw appError("模板名称不能为空", 40000, 400);
   const duplicated = await templateRepository.getTemplateRowByName(templateName);
   if (duplicated) throw appError("模板名称重复", 40003, 409);
-}
-
-function nextVersion(version) {
-  return `V${Number(String(version || "V1").replace("V", "")) + 1}`;
 }

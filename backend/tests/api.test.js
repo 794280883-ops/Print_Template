@@ -28,39 +28,34 @@ test("GET /api/v1/health returns standard response", async () => {
   }
 });
 
-test("POST /api/v1/ai/templates/generate returns DSL draft", async () => {
+test("GET /api/v1/template/fields/location returns field dictionary", async () => {
   const server = await listen(createApp());
   try {
     const port = server.address().port;
-    const response = await fetch(`http://127.0.0.1:${port}/api/v1/ai/templates/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ templateType: "CONTAINER", prompt: "容器标签 二维码" }),
-    });
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/template/fields/location`);
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.code, 0);
-    assert.equal(body.data.templateType, "CONTAINER");
-    assert.ok(Array.isArray(body.data.elements));
+    assert.ok(Array.isArray(body.data));
   } finally {
     server.close();
   }
 });
 
-test("POST /api/v1/templates/1/publish publishes seeded template when DB tests are enabled", async (t) => {
+test("POST /api/v1/templates/1/enable enables seeded template when DB tests are enabled", async (t) => {
   if (process.env.RUN_DB_TESTS !== "1") {
-    t.skip("Set RUN_DB_TESTS=1 after MySQL migration to run publish API integration test.");
+    t.skip("Set RUN_DB_TESTS=1 after MySQL migration to run template enable API integration test.");
     return;
   }
 
   const server = await listen(createApp());
   try {
     const port = server.address().port;
-    const response = await fetch(`http://127.0.0.1:${port}/api/v1/templates/1/publish`, { method: "POST" });
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/templates/1/enable`, { method: "POST" });
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.code, 0);
-    assert.equal(body.data.status, "published");
+    assert.equal(body.data.status, "enabled");
   } finally {
     server.close();
   }
