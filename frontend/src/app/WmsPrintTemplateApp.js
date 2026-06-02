@@ -207,7 +207,7 @@ export async function initWmsPrintTemplateApp() {
                   <label class="form-label">状态</label>
                   <select class="form-select" id="filterStatus">
                     <option value="">全部</option>
-                    ${["draft","published","disabled"].map(v=>`<option value="${v}" ${filters.status===v?"selected":""}>${STATUS_LABEL[v]}</option>`).join("")}
+                    ${["draft","published"].map(v=>`<option value="${v}" ${filters.status===v?"selected":""}>${STATUS_LABEL[v]}</option>`).join("")}
                   </select>
                 </div>
                 <div class="col-12">
