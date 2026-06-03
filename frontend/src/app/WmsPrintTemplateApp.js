@@ -27,6 +27,7 @@ import {
   createBusinessData as apiCreateBusinessData,
   updateBusinessData as apiUpdateBusinessData,
   deleteBusinessData as apiDeleteBusinessData,
+  importBusinessData as apiImportBusinessData,
 } from '../api/businessDataApi.js';
 import { sampleByType, fieldExists } from '../services/templateDslService.js';
 import { getPrintableTemplate, normalizePrintRotation } from '../services/printRotationService.js';
@@ -1192,6 +1193,7 @@ export async function initWmsPrintTemplateApp() {
             <div class="section-head">
               <div class="toolbar-actions">
                 <button class="btn btn-primary-wms" id="bizAddBtn">新增</button>
+                <button class="btn btn-light-wms" id="bizImportBtn">导入</button>
                 <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
               </div>
               <div>
@@ -1238,6 +1240,7 @@ export async function initWmsPrintTemplateApp() {
         };
         document.getElementById("bizKeyword").onkeydown = e => { if (e.key==="Enter") document.getElementById("bizQueryBtn").click(); };
         document.getElementById("bizAddBtn").onclick = () => openBizDataModal();
+        document.getElementById("bizImportBtn").onclick = () => openBizDataImportModal();
         document.getElementById("templatePrintBtn").onclick = () => {
           if (selectedBusinessRows.size === 0) return toast("请先勾选要打印的业务数据");
           // Map selected IDs to data objects
@@ -1384,6 +1387,198 @@ export async function initWmsPrintTemplateApp() {
         } catch (err) {
           toast(`删除失败：${err.message}`);
         }
+      }
+
+      function openBizDataImportModal() {
+        const type = businessDataFilters.type;
+        const fields = FIELD_DICT[type] || [];
+
+        // Build a map: Chinese field name -> field code
+        const fieldHeaderMap = {};
+        fields.forEach(f => { fieldHeaderMap[f.name] = f.code; });
+
+        // State: parsed rows from the selected file
+        let parsedRows = [];
+
+        document.getElementById("genericModalTitle").textContent = "导入业务数据";
+        document.getElementById("genericModalBody").innerHTML = `
+          <div class="mb-3">
+            <label class="form-label">业务类型</label>
+            <input class="form-control" disabled value="${TYPE_LABEL[type] || type}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">选择文件 <span style="color:red">*</span></label>
+            <input class="form-control" type="file" id="importFileInput" accept=".xlsx,.xls">
+            <small class="text-muted" style="display:block;margin-top:4px">
+              第一行必须是字段名称（中文），从第二行起为数据。必填字段（带红色星号）必须有值。支持 .xlsx / .xls 格式。
+            </small>
+          </div>
+          <div class="mb-3">
+            <button class="btn btn-secondary-wms" id="downloadTemplateBtn">下载模板文件</button>
+          </div>
+          <div id="importPreviewArea" style="display:none">
+            <hr>
+            <div class="section-head">
+              <span class="section-meta" id="importPreviewInfo"></span>
+            </div>
+            <div class="table-wrap" style="max-height:300px;overflow:auto">
+              <table class="table align-middle">
+                <thead id="importPreviewHead"></thead>
+                <tbody id="importPreviewBody"></tbody>
+              </table>
+            </div>
+          </div>`;
+        document.getElementById("genericModalFoot").innerHTML = `
+          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-primary-wms" id="importConfirmBtn" disabled>导入</button>`;
+        genericModal.show();
+
+        // -- Download Template --
+        document.getElementById("downloadTemplateBtn").onclick = async () => {
+          const XLSX = await import('xlsx');
+          const headerNames = fields.map(f => f.name);
+          const wb = XLSX.utils.book_new();
+          const ws = XLSX.utils.aoa_to_sheet([headerNames]);
+          XLSX.utils.book_append_sheet(wb, ws, '业务数据');
+          const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+          const blob = new Blob([wbout], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${TYPE_LABEL[type] || type}_导入模板.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        };
+
+        // -- File selection --
+        document.getElementById("importFileInput").onchange = async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          // Validate file size (max 5MB)
+          if (file.size > 5 * 1024 * 1024) {
+            toast("文件大小不能超过 5MB");
+            e.target.value = '';
+            return;
+          }
+
+          try {
+            const data = await file.arrayBuffer();
+            const XLSX = await import('xlsx');
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            if (rows.length < 2) {
+              toast("文件至少需要包含表头一行和一条数据");
+              e.target.value = '';
+              return;
+            }
+
+            // Parse headers (first row)
+            const headers = rows[0].map(h => String(h || '').trim());
+            const codeHeaders = headers.map(h => fieldHeaderMap[h]);
+            const unknownHeaders = headers.filter((h, i) => !fieldHeaderMap[h] && h);
+            if (unknownHeaders.length > 0) {
+              toast(`无法识别的字段名：${unknownHeaders.join('、')}`);
+              e.target.value = '';
+              return;
+            }
+
+            // Parse data rows
+            parsedRows = [];
+            const rowErrors = [];
+            const requiredFields = fields.filter(f => f.required);
+
+            for (let i = 1; i < rows.length; i++) {
+              const row = rows[i];
+              // Skip completely empty rows
+              if (!row || (Array.isArray(row) && row.every(c => c === undefined || c === null || String(c).trim() === ''))) {
+                continue;
+              }
+              const rowData = {};
+              for (let j = 0; j < codeHeaders.length; j++) {
+                const code = codeHeaders[j];
+                if (code) rowData[code] = String(row[j] ?? '').trim();
+              }
+
+              // Validate required fields
+              let hasError = false;
+              for (const rf of requiredFields) {
+                if (!rowData[rf.code]) {
+                  rowErrors.push(`第 ${i + 1} 行：必填字段 [${rf.name}] 不能为空`);
+                  hasError = true;
+                  break;
+                }
+              }
+              if (hasError) continue;
+
+              parsedRows.push(rowData);
+            }
+
+            if (rowErrors.length > 0) {
+              toast(`数据校验有 ${rowErrors.length} 个错误，已跳过`);
+            }
+
+            if (parsedRows.length === 0) {
+              toast("没有有效的数据行可导入");
+              document.getElementById("importPreviewArea").style.display = "none";
+              document.getElementById("importConfirmBtn").disabled = true;
+              return;
+            }
+
+            // Show preview
+            const previewHeaderNames = fields.map(f => f.name);
+            document.getElementById("importPreviewInfo").textContent =
+              `共解析 ${parsedRows.length} 条有效数据${rowErrors.length ? `，${rowErrors.length} 条错误已跳过` : ''}`;
+            document.getElementById("importPreviewHead").innerHTML =
+              `<tr>${previewHeaderNames.map(h => `<th class="text-start">${escHtml(h)}</th>`).join('')}</tr>`;
+            const previewRows = parsedRows.slice(0, 20);
+            document.getElementById("importPreviewBody").innerHTML = previewRows.map(r =>
+              `<tr>${fields.map(f => `<td class="text-start">${escHtml(r[f.code] || '-')}</td>`).join('')}</tr>`
+            ).join('');
+            if (parsedRows.length > 20) {
+              document.getElementById("importPreviewBody").innerHTML +=
+                `<tr><td colspan="${fields.length}" class="text-center text-muted">... 仅显示前 20 条，共 ${parsedRows.length} 条</td></tr>`;
+            }
+            document.getElementById("importPreviewArea").style.display = "block";
+            document.getElementById("importConfirmBtn").disabled = false;
+          } catch (err) {
+            toast(`文件解析失败：${err.message}`);
+            e.target.value = '';
+          }
+        };
+
+        // -- Import confirm --
+        document.getElementById("importConfirmBtn").onclick = async () => {
+          if (parsedRows.length === 0) return toast("没有可导入的数据");
+
+          const btn = document.getElementById("importConfirmBtn");
+          btn.disabled = true;
+          btn.textContent = "导入中...";
+
+          try {
+            const result = await apiImportBusinessData({
+              businessType: type,
+              rows: parsedRows,
+            });
+
+            if (result.skipCount > 0) {
+              toast(`导入完成：成功 ${result.successCount} 条，跳过 ${result.skipCount} 条（编码已存在）`);
+            } else {
+              toast(`导入成功：共 ${result.successCount} 条`);
+            }
+
+            genericModal.hide();
+            renderBusiness();
+          } catch (err) {
+            toast(`导入失败：${err.message}`);
+            btn.disabled = false;
+            btn.textContent = "导入";
+          }
+        };
       }
 
       async function openPrintModal(template = null, preselectedData = null) {

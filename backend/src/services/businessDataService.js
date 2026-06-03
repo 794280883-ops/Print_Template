@@ -115,6 +115,54 @@ export async function updateBusinessData(id, input) {
   return toDto(row);
 }
 
+export async function importBusinessData(input) {
+  const businessType = String(input.businessType || "").toUpperCase();
+  if (!VALID_TYPES.includes(businessType)) throw appError("无效的业务类型", 40000, 400);
+
+  const fields = await listFields(businessType);
+  const rows = input.rows || [];
+  if (!rows.length) throw appError("导入数据不能为空", 40000, 400);
+
+  const existingCodes = await businessDataRepo.listCodesByType(businessType);
+  const existingSet = new Set(existingCodes.map(r => r.business_code));
+
+  const primaryField = fields.find(f => f.is_required && f.sort_no <= 10);
+
+  let successCount = 0;
+  let skipCount = 0;
+  const skippedCodes = [];
+
+  for (const row of rows) {
+    // Validate required fields
+    let hasError = false;
+    for (const field of fields) {
+      if (field.is_required) {
+        const value = row[field.field_code];
+        if (value === undefined || value === null || String(value).trim() === "") {
+          hasError = true;
+          break;
+        }
+      }
+    }
+    if (hasError) { skipCount++; continue; }
+
+    // Derive business_code
+    const businessCode = row[primaryField?.field_code];
+    if (!businessCode || !String(businessCode).trim()) { skipCount++; continue; }
+    const code = String(businessCode).trim();
+
+    // Check duplicate
+    if (existingSet.has(code)) { skipCount++; skippedCodes.push(code); continue; }
+
+    // Insert
+    await businessDataRepo.create({ businessType, businessCode: code, businessData: row });
+    existingSet.add(code);
+    successCount++;
+  }
+
+  return { successCount, skipCount, skippedCodes, total: rows.length };
+}
+
 export async function deleteBusinessData(id) {
   const existing = await businessDataRepo.getById(id);
   if (!existing) throw appError("业务数据不存在", 40400, 404);

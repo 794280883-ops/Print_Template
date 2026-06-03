@@ -17,6 +17,10 @@ export async function update(req, res) {
   sendSuccess(res, await businessDataService.updateBusinessData(req.params.id, req.body));
 }
 
+export async function importExcel(req, res) {
+  sendSuccess(res, await businessDataService.importBusinessData(req.body));
+}
+
 export async function remove(req, res) {
   sendSuccess(res, await businessDataService.deleteBusinessData(req.params.id));
 }

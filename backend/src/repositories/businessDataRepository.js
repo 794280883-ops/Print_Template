@@ -55,6 +55,14 @@ export async function update(id, { businessCode, businessData }) {
   return getById(id);
 }
 
+export async function listCodesByType(type) {
+  const [rows] = await pool.query(
+    "SELECT business_code FROM business_data WHERE business_type = ?",
+    [type],
+  );
+  return rows;
+}
+
 export async function remove(id) {
   await pool.query("DELETE FROM business_data WHERE id = ?", [id]);
 }

@@ -22,6 +22,13 @@ export function updateBusinessData(id, data) {
   });
 }
 
+export function importBusinessData(data) {
+  return request("/business-data/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function deleteBusinessData(id) {
   return request(`/business-data/${encodeURIComponent(id)}`, {
     method: "DELETE",

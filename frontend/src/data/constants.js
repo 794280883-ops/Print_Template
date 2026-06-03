@@ -33,8 +33,6 @@ export const FIELD_DICT = {
     { code: "containerCode", name: "容器编码", type: "string", example: "C2P0001", required: true, desc: "容器唯一编码，前缀 C2P 表示二级包装容器，后跟流水号" },
     { code: "warehouseCode", name: "区域仓编码", type: "string", example: "JP-TYO-01", required: false, desc: "区域仓编码" },
     { code: "areaCode", name: "物理仓编码", type: "string", example: "JP01", required: false, desc: "物理仓编码" },
-    { code: "purpose", name: "用途", type: "string", example: "入库周转", required: false, desc: "容器标签用途" },
-    { code: "usageScene", name: "使用场景", type: "string", example: "入库收货", required: false, desc: "容器标签适用的业务使用场景" },
   ],
   PRODUCT: [
     { code: "productCode", name: "商品编码", type: "string", example: "SKU-10001", required: true, desc: "商品编码" },
