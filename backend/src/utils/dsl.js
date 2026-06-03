@@ -16,6 +16,7 @@ export function toTemplateDsl(template, elements = []) {
     printRotation: normalizePrintRotation(template.print_rotation),
     status: template.status,
     remark: template.remark || "",
+    fieldPreviewValues: parseJson(template.field_preview_values, null),
     updatedAt: template.updated_at,
     elements: elements.map(toElementDsl),
   };
@@ -59,6 +60,7 @@ export function normalizeTemplateInput(input) {
     printRotation: normalizePrintRotation(input.printRotation),
     status: normalizeTemplateStatus(input.status),
     remark: input.remark || "",
+    fieldPreviewValues: input.fieldPreviewValues || null,
     elements: Array.isArray(input.elements) ? input.elements : [],
   };
 }

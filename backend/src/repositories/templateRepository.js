@@ -58,8 +58,8 @@ export async function createTemplate(template) {
   return withTransaction(async (connection) => {
     const [result] = await connection.query(
       `INSERT INTO print_template
-        (template_code, template_name, template_type, width_mm, height_mm, unit, dpi, print_rotation, status, remark)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (template_code, template_name, template_type, width_mm, height_mm, unit, dpi, print_rotation, status, remark, field_preview_values)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         template.templateCode,
         template.templateName,
@@ -71,6 +71,7 @@ export async function createTemplate(template) {
         template.printRotation || 0,
         template.status,
         template.remark,
+        template.fieldPreviewValues ? JSON.stringify(template.fieldPreviewValues) : null,
       ],
     );
     await replaceTemplateChildren(connection, result.insertId, template);
@@ -83,7 +84,7 @@ export async function replaceTemplate(id, template) {
     await connection.query(
       `UPDATE print_template
        SET template_code = ?, template_name = ?, template_type = ?, width_mm = ?, height_mm = ?, unit = ?, dpi = ?, print_rotation = ?,
-           status = ?, remark = ?
+           status = ?, remark = ?, field_preview_values = ?
        WHERE id = ?`,
       [
         template.templateCode,
@@ -96,6 +97,7 @@ export async function replaceTemplate(id, template) {
         template.printRotation || 0,
         template.status,
         template.remark,
+        template.fieldPreviewValues ? JSON.stringify(template.fieldPreviewValues) : null,
         id,
       ],
     );

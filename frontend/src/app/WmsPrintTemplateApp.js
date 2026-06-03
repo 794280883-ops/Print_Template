@@ -62,6 +62,7 @@ export async function initWmsPrintTemplateApp() {
       let selectedFieldType = "LOCATION";
       let selectedTemplateRows = new Set();
       let selectedBusinessRows = new Set();
+      let fieldPreviewValues = {};
       let businessDataState = { rows: [], total: 0 };
       let businessDataFilters = { type: "LOCATION", keyword: "", page: 1, pageSize: 20 };
 
@@ -143,7 +144,9 @@ export async function initWmsPrintTemplateApp() {
         const t = currentTemplate();
         if (!t?.id || !String(t.templateName || "").trim()) return;
         try {
-          const updated = await updateTemplate(t.id, deepClone(t));
+          const payload = deepClone(t);
+          payload.fieldPreviewValues = fieldPreviewValues;
+          const updated = await updateTemplate(t.id, payload);
           replaceTemplate(updated);
           // 保存成功后同步更新草稿
           if (designerDraft && designerDraft.id === updated.id) {
@@ -451,6 +454,7 @@ export async function initWmsPrintTemplateApp() {
       async function enterTemplateDesigner(t) {
         currentTemplateId=t.id;
         designerDraft = deepClone(t);
+        fieldPreviewValues = (t.fieldPreviewValues && typeof t.fieldPreviewValues === 'object') ? { ...t.fieldPreviewValues } : {};
         selectedElementId=designerDraft.elements[0]?.id||null;
         try {
           await recordDesignLog(t.id);
@@ -477,9 +481,11 @@ export async function initWmsPrintTemplateApp() {
           <div class="designer">
             <div class="designer-top">
               <div>
-                <input class="designer-title-input" id="designerTemplateName" value="${escAttr(t.templateName)}" data-original-name="${escAttr(t.templateName)}" aria-label="模板名称">
-                <span class="status-pill ${STATUS_CLASS[t.status]}" style="margin-left:8px">${STATUS_LABEL[t.status]}</span>
-                <span class="section-meta" style="margin-left:8px">${TYPE_LABEL[t.templateType]}</span>
+                <div style="margin-bottom:4px">
+                  <span class="section-meta">${TYPE_LABEL[t.templateType]}</span>
+                  <span class="status-pill ${STATUS_CLASS[t.status]}" style="margin-left:8px">${STATUS_LABEL[t.status]}</span>
+                </div>
+                <input class="designer-title-input" id="designerTemplateName" value="${escAttr(t.templateName)}" data-original-name="${escAttr(t.templateName)}" aria-label="模板名称" maxlength="50">
                 <span class="designer-size-editor" aria-label="标签尺寸">
                   <span class="designer-size-label">宽</span>
                   <input class="designer-size-input" id="designerWidth" type="number" min="1" step="0.5" value="${num(t.size.width)}" title="宽度 mm">
@@ -498,6 +504,13 @@ export async function initWmsPrintTemplateApp() {
                       [270, "270° 顺时针"],
                     ].map(([value,label])=>`<option value="${value}" ${normalizePrintRotation(t.printRotation)===value?"selected":""}>${label}</option>`).join("")}
                   </select>
+                  ${normalizePrintRotation(t.printRotation) > 0 ? `
+                  <span class="designer-size-label" style="margin-left:8px">打印尺寸</span>
+                  <input class="designer-size-input" style="width:50px;text-align:center;background:#f3f4f6;color:#6b7280" disabled value="${num(getPrintableTemplate(t).size.width)}">
+                  <span>×</span>
+                  <input class="designer-size-input" style="width:50px;text-align:center;background:#f3f4f6;color:#6b7280" disabled value="${num(getPrintableTemplate(t).size.height)}">
+                  <span class="designer-unit-text">mm</span>
+                  ` : ""}
                 </span>
               </div>
               <div class="toolbar-actions">
@@ -593,6 +606,8 @@ export async function initWmsPrintTemplateApp() {
         if (el.type==="image") return el.imageUrl?`<img src="${escAttr(el.imageUrl)}" alt="" style="max-width:100%;max-height:100%">`:`<span class="section-meta">图片</span>`;
         if (el.type==="checkbox") return `<div class="checkbox-content"><span class="checkbox-mark ${el.checked?"checked":""}">${el.checked?"✓":""}</span>${el.text?`<span class="checkbox-label">${escHtml(el.text)}</span>`:""}</div>`;
         if (el.type==="line"||el.type==="rect") return "";
+        // Designer mode: merge user field preview overrides into sample data
+        if (!preview) data = { ...data, ...fieldPreviewValues };
         // Preview/print mode: bindField takes priority for field-bound text (matches PDF logic)
         // Static text always shows its static content regardless of stale bindField
         const rawValue = (preview && el.textKind !== "static" && el.bindField && data[el.bindField] !== undefined)
@@ -614,7 +629,7 @@ export async function initWmsPrintTemplateApp() {
             <div class="field"><label class="form-label">宽度 mm</label><input class="form-control" data-prop="width" type="number" step="0.5" value="${num(el.width)}"></div>
             <div class="field"><label class="form-label">高度 mm</label><input class="form-control" data-prop="height" type="number" step="0.5" value="${num(el.height)}"></div>
             <div class="field"><label class="form-label">层级</label><input class="form-control" data-prop="zIndex" type="number" step="1" value="${el.zIndex||1}"></div>
-            <div class="field"><label class="form-label">旋转</label><select class="form-select" data-prop="rotate">${[0,90,180,270].map(v=>`<option value="${v}" ${Number(el.rotate||0)===v?"selected":""}>${v}°</option>`).join("")}</select></div>
+            <div class="field"><label class="form-label">旋转</label><select class="form-select" data-prop="rotate" ${normalizePrintRotation(t.printRotation)>0?"disabled":""}>${[0,90,180,270].map(v=>`<option value="${v}" ${Number(el.rotate||0)===v?"selected":""}>${v}°</option>`).join("")}</select></div>
           </div>`;
         const styleProps = `
           <div class="form-grid" style="margin-top:10px">
@@ -638,7 +653,7 @@ export async function initWmsPrintTemplateApp() {
           return `${common}
             <div class="form-grid" style="margin-top:10px">
               ${isDirection ? '' : `<div class="field"><label class="form-label">文本类型</label><select class="form-select" data-prop="textKind"><option value="static" ${!isField?"selected":""}>静态文本</option><option value="field" ${isField?"selected":""}>动态字段</option></select></div>`}
-              ${isField ? `<div class="field"><label class="form-label">绑定字段</label>${bindSelect}</div>` : ''}
+              ${isField ? `<div class="field"><label class="form-label">绑定字段</label>${bindSelect}</div><div class="field"><label class="form-label">字段预览值</label><input class="form-control" data-prop="previewValue" data-field-code="${escAttr(el.bindField||'')}" value="${escAttr(fieldPreviewValues[el.bindField]||'')}" placeholder="输入预览值"></div>` : ''}
               ${!isField ? `<div class="field span"><label class="form-label">静态内容</label><textarea class="form-control" data-prop="text" rows="3">${escHtml(el.text||"")}</textarea></div>` : ''}
             </div>${textStyleProps}`;
         }
@@ -733,6 +748,15 @@ export async function initWmsPrintTemplateApp() {
         document.querySelectorAll("[data-el]").forEach(elNode=>{ elNode.onpointerdown = e=>startElementPointer(e,elNode.dataset.el); });
         document.querySelectorAll("[data-prop]").forEach(input=>{
           input.onchange = input.oninput = ()=>updateElementProp(input.dataset.prop, readInputValue(input));
+        });
+        document.querySelectorAll('[data-prop="previewValue"]').forEach(input=>{
+          input.oninput = ()=>{
+            const fieldCode = input.dataset.fieldCode;
+            const val = input.value.trim();
+            if (val) fieldPreviewValues[fieldCode] = val;
+            else delete fieldPreviewValues[fieldCode];
+            redrawCanvasOnly();
+          };
         });
         document.querySelectorAll(".validation-item[data-el]").forEach(item=>{
           item.onclick = ()=>{ selectedElementId=item.dataset.el; renderDesigner(); };
@@ -1014,6 +1038,7 @@ export async function initWmsPrintTemplateApp() {
       }
 
       function openPreviewModal(t, data=sampleByType(t.templateType)) {
+        data = { ...data, ...fieldPreviewValues };
         const printTemplate = getPrintableTemplate(t);
         const rotation = normalizePrintRotation(t.printRotation);
         const oldZoom=zoom;

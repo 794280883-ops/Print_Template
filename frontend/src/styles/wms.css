@@ -226,7 +226,7 @@
     }
     .designer-title { font-weight: 700; font-size: 15px; }
     .designer-title-input {
-      width: min(420px, 38vw);
+      width: 240px;
       min-height: 32px;
       border: 1px solid transparent;
       border-radius: var(--wms-radius-md);
