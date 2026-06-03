@@ -541,6 +541,7 @@ export async function initWmsPrintTemplateApp() {
                       <option value="0.75" ${zoom===0.75?"selected":""}>75%</option>
                       <option value="1" ${zoom===1?"selected":""}>100%</option>
                       <option value="1.25" ${zoom===1.25?"selected":""}>125%</option>
+                      <option value="1.5" ${zoom===1.5?"selected":""}>150%</option>
                     </select>
                   </div>
                 </div>
@@ -571,7 +572,7 @@ export async function initWmsPrintTemplateApp() {
           `width:${el.width*PX_PER_MM*zoom}px`,`height:${el.height*PX_PER_MM*zoom}px`,
           `z-index:${el.zIndex||1}`,`font-size:${(el.fontSize||12)*zoom}px`,
           `font-weight:${el.bold?700:400}`,`justify-content:${justify}`,
-          `color:${el.color||"#111827"}`,`background:${el.backgroundColor||"transparent"}`,
+          `color:${el.color||"#111827"}`,`background:${el.type==="line"?(el.color||"#111827"):(el.backgroundColor||"transparent")}`,
           `transform:rotate(${el.rotate||0}deg)`
         ].join(";");
         const content = elementDisplay(el, t, preview, data);
@@ -592,9 +593,9 @@ export async function initWmsPrintTemplateApp() {
         if (el.type==="image") return el.imageUrl?`<img src="${escAttr(el.imageUrl)}" alt="" style="max-width:100%;max-height:100%">`:`<span class="section-meta">图片</span>`;
         if (el.type==="checkbox") return `<div class="checkbox-content"><span class="checkbox-mark ${el.checked?"checked":""}">${el.checked?"✓":""}</span>${el.text?`<span class="checkbox-label">${escHtml(el.text)}</span>`:""}</div>`;
         if (el.type==="line"||el.type==="rect") return "";
-        // Preview/print mode: bindField takes priority (matches PDF logic)
-        // Designer mode: respect textKind (static text as placeholder)
-        const rawValue = (preview && el.bindField && data[el.bindField] !== undefined)
+        // Preview/print mode: bindField takes priority for field-bound text (matches PDF logic)
+        // Static text always shows its static content regardless of stale bindField
+        const rawValue = (preview && el.textKind !== "static" && el.bindField && data[el.bindField] !== undefined)
           ? String(data[el.bindField])
           : el.textKind==="field"
             ? (data[el.bindField] ?? `[${el.bindField||"未绑定"}]`)
@@ -662,7 +663,6 @@ export async function initWmsPrintTemplateApp() {
         if (el.type==="rect") {
           return `${common}
             <div class="form-grid" style="margin-top:10px">
-              <div class="field"><label class="form-label">边框颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div>
               <div class="field"><label class="form-label">背景色</label><input class="form-control" data-prop="backgroundColor" type="color" value="${normalizeColor(el.backgroundColor||"#eaf4ff")}"></div>
             </div>`;
         }
