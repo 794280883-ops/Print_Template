@@ -430,7 +430,7 @@
     .props-body { padding: 12px; overflow: auto; }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .form-grid .span { grid-column: 1 / -1; }
-    .checkbox-row { display: flex; align-items: center; gap: 7px; min-height: 30px; font-size: 13px; }
+    .checkbox-row { display: flex; align-items: center; gap: 7px; min-height: 38px; font-size: 13px; }
     .checkbox-row input { min-height: auto; width: 16px; height: 16px; }
 
     /* ── Preview ── */

@@ -634,7 +634,7 @@ export async function initWmsPrintTemplateApp() {
         const styleProps = `
           <div class="form-grid" style="margin-top:10px">
             <div class="field"><label class="form-label">字号 px</label><input class="form-control" data-prop="fontSize" type="number" value="${el.fontSize||12}"></div>
-            <label class="checkbox-row"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
+            <label class="checkbox-row" style="padding-top:5px"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
             <div class="field"><label class="form-label">对齐</label><select class="form-select" data-prop="align">${["left","center","right"].map(v=>`<option value="${v}" ${(el.align||"left")===v?"selected":""}>${{left:"左对齐",center:"居中",right:"右对齐"}[v]}</option>`).join("")}</select></div>
             <div class="field"><label class="form-label">文字颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div>
           </div>`;
@@ -647,7 +647,7 @@ export async function initWmsPrintTemplateApp() {
           const textStyleProps = isDirection ? `
             <div class="form-grid" style="margin-top:10px">
               <div class="field"><label class="form-label">字号 px</label><input class="form-control" data-prop="fontSize" type="number" value="${el.fontSize||12}"></div>
-              <label class="checkbox-row"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
+              <label class="checkbox-row" style="padding-top:5px"><input data-prop="bold" type="checkbox" ${el.bold?"checked":""}>加粗</label>
               <div class="field"><label class="form-label">文字颜色</label><input class="form-control" data-prop="color" type="color" value="${normalizeColor(el.color||"#111827")}"></div>
             </div>` : styleProps;
           return `${common}
