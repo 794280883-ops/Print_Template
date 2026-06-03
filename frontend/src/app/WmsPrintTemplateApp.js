@@ -23,11 +23,8 @@ import {
 } from '../api/templateApi.js';
 import {
   listBusinessData as apiListBusinessData,
-  getBusinessData as apiGetBusinessData,
-  createBusinessData as apiCreateBusinessData,
-  updateBusinessData as apiUpdateBusinessData,
-  deleteBusinessData as apiDeleteBusinessData,
-  importBusinessData as apiImportBusinessData,
+  getBusinessDataDetail as apiGetBusinessDataDetail,
+  listWarehouses as apiListWarehouses,
 } from '../api/businessDataApi.js';
 import { sampleByType, fieldExists } from '../services/templateDslService.js';
 import { getPrintableTemplate, normalizePrintRotation } from '../services/printRotationService.js';
@@ -65,7 +62,8 @@ export async function initWmsPrintTemplateApp() {
       let selectedBusinessRows = new Set();
       let fieldPreviewValues = {};
       let businessDataState = { rows: [], total: 0 };
-      let businessDataFilters = { type: "LOCATION", keyword: "", page: 1, pageSize: 20 };
+      let businessDataFilters = { type: "LOCATION", keyword: "", warehouseCode: "", page: 1, pageSize: 20 };
+      let businessWarehouses = [];
 
       // ── Helpers ──
       function uid(p) { return `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`; }
@@ -1151,24 +1149,37 @@ export async function initWmsPrintTemplateApp() {
         const type = businessDataFilters.type;
         const fields = FIELD_DICT[type] || [];
 
-        // Fetch data
+        root.innerHTML = renderBusinessDataHtml({ type, fields, rows: [], total: 0, loading: true, error: "" });
         try {
-          const result = await apiListBusinessData(type, {
-            keyword: businessDataFilters.keyword,
-            page: businessDataFilters.page,
-            pageSize: businessDataFilters.pageSize,
-          });
+          const [result, warehouses] = await Promise.all([
+            apiListBusinessData(type, {
+              keyword: businessDataFilters.keyword,
+              warehouseCode: businessDataFilters.warehouseCode,
+              page: businessDataFilters.page,
+              pageSize: businessDataFilters.pageSize,
+            }),
+            apiListWarehouses({ bizType: type }),
+          ]);
           businessDataState = result || { rows: [], total: 0 };
+          businessWarehouses = warehouses || [];
         } catch (err) {
           businessDataState = { rows: [], total: 0 };
-          if (err.message && !err.message.includes("请求失败")) toast(`加载业务数据失败：${err.message}`);
+          root.innerHTML = renderBusinessDataHtml({ type, fields, rows: [], total: 0, loading: false, error: err.message || "加载业务数据失败" });
+          bindBusinessDataEvents([], 1);
+          return;
         }
 
         const { rows, total } = businessDataState;
         const totalPages = Math.max(1, Math.ceil(total / businessDataFilters.pageSize));
         const currentPage = businessDataFilters.page;
+        root.innerHTML = renderBusinessDataHtml({ type, fields, rows, total, loading: false, error: "" });
+        bindBusinessDataEvents(rows, totalPages);
+      }
 
-        root.innerHTML = `
+      function renderBusinessDataHtml({ type, fields, rows, total, loading, error }) {
+        const totalPages = Math.max(1, Math.ceil(total / businessDataFilters.pageSize));
+        const currentPage = businessDataFilters.page;
+        return `
           <div class="card-panel filter-panel">
             <div class="panel-body">
               <div class="row align-items-end">
@@ -1182,6 +1193,12 @@ export async function initWmsPrintTemplateApp() {
                 <div class="col-md-3">
                   <input class="form-control" id="bizKeyword" placeholder="搜索编码..." value="${escAttr(businessDataFilters.keyword)}">
                 </div>
+                <div class="col-md-3">
+                  <select class="form-select" id="bizWarehouse">
+                    <option value="">全部仓库</option>
+                    ${businessWarehouses.map(w=>`<option value="${escAttr(w.warehouseCode)}" ${businessDataFilters.warehouseCode===w.warehouseCode?"selected":""}>${escHtml(w.warehouseName || w.warehouseCode)}</option>`).join("")}
+                  </select>
+                </div>
                 <div class="col-auto">
                   <button class="btn btn-primary-wms" id="bizQueryBtn">查询</button>
                   <button class="btn btn-secondary-wms" id="bizResetBtn">重置</button>
@@ -1192,12 +1209,10 @@ export async function initWmsPrintTemplateApp() {
           <div class="card-panel">
             <div class="section-head">
               <div class="toolbar-actions">
-                <button class="btn btn-primary-wms" id="bizAddBtn">新增</button>
-                <button class="btn btn-light-wms" id="bizImportBtn">导入</button>
                 <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
               </div>
               <div>
-                <span class="section-meta">共 ${total} 条</span>
+                <span class="section-meta">${loading ? "加载中..." : `共 ${total} 条`}</span>
               </div>
             </div>
             <div class="table-wrap">
@@ -1206,24 +1221,24 @@ export async function initWmsPrintTemplateApp() {
                   <th class="selection-cell"><input id="bizCheckAll" type="checkbox"></th>
                   ${["编码", ...fields.map(f=>f.name), "操作"].map(h=>`<th class="text-start">${h}</th>`).join("")}
                 </tr></thead>
-                <tbody>${rows.length ? rows.map(r=>`<tr>
+                <tbody>${loading ? `<tr><td colspan="${fields.length+3}"><div class="empty-state">正在加载业务数据...</div></td></tr>` : error ? `<tr><td colspan="${fields.length+3}"><div class="empty-state">加载失败：${escHtml(error)}</div></td></tr>` : rows.length ? rows.map(r=>`<tr>
                   <td class="selection-cell"><input class="bizRowCheck" type="checkbox" value="${r.id}" ${selectedBusinessRows.has(String(r.id))?"checked":""}></td>
-                  <td class="text-start" style="font-weight:600">${escHtml(r.businessCode)}</td>
+                  <td class="text-start" style="font-weight:600"><span class="text-link action-link" data-biz-act="view" data-biz-code="${escAttr(r.businessCode)}">${escHtml(r.businessCode)}</span></td>
                   ${fields.map(f=>`<td class="text-start">${escHtml(r.fields[f.code] ?? "-")}</td>`).join("")}
                   <td class="text-start">
-                    <span class="action-link" data-biz-act="edit" data-biz-id="${r.id}">编辑</span>
-                    <span class="action-link" data-biz-act="delete" data-biz-id="${r.id}">删除</span>
+                    <span class="action-link" data-biz-act="view" data-biz-code="${escAttr(r.businessCode)}">查看</span>
                   </td>
-                </tr>`).join("") : `<tr><td colspan="${fields.length+3}"><div class="empty-state">暂无业务数据，请点击新增。</div></td></tr>`}</tbody>
+                </tr>`).join("") : `<tr><td colspan="${fields.length+3}"><div class="empty-state">暂无业务数据</div></td></tr>`}</tbody>
               </table>
             </div>
-            ${renderBusinessPagination(currentPage, totalPages, total)}
+            ${loading || error ? "" : renderBusinessPagination(currentPage, totalPages, total)}
           </div>`;
+      }
 
-        // Bind events
+      function bindBusinessDataEvents(rows, totalPages) {
         document.querySelectorAll("[data-biz-tab]").forEach(tab => {
           tab.onclick = () => {
-            businessDataFilters = { type: tab.dataset.bizTab, keyword: "", page: 1, pageSize: 20 };
+            businessDataFilters = { type: tab.dataset.bizTab, keyword: "", warehouseCode: "", page: 1, pageSize: 20 };
             businessTab = tab.dataset.bizTab;
             selectedBusinessRows.clear();
             renderBusiness();
@@ -1231,23 +1246,20 @@ export async function initWmsPrintTemplateApp() {
         });
         document.getElementById("bizQueryBtn").onclick = () => {
           businessDataFilters.keyword = document.getElementById("bizKeyword").value.trim();
+          businessDataFilters.warehouseCode = document.getElementById("bizWarehouse").value;
           businessDataFilters.page = 1;
           renderBusiness();
         };
         document.getElementById("bizResetBtn").onclick = () => {
-          businessDataFilters = { type: businessDataFilters.type, keyword: "", page: 1, pageSize: 20 };
+          businessDataFilters = { type: businessDataFilters.type, keyword: "", warehouseCode: "", page: 1, pageSize: 20 };
           renderBusiness();
         };
         document.getElementById("bizKeyword").onkeydown = e => { if (e.key==="Enter") document.getElementById("bizQueryBtn").click(); };
-        document.getElementById("bizAddBtn").onclick = () => openBizDataModal();
-        document.getElementById("bizImportBtn").onclick = () => openBizDataImportModal();
         document.getElementById("templatePrintBtn").onclick = () => {
           if (selectedBusinessRows.size === 0) return toast("请先勾选要打印的业务数据");
-          // Map selected IDs to data objects
           const selectedData = rows.filter(r => selectedBusinessRows.has(String(r.id))).map(r => ({ _id: r.id, ...r.fields }));
           openPrintModal(null, selectedData);
         };
-        // Select-all checkbox
         const bizCheckAll = document.getElementById("bizCheckAll");
         if (bizCheckAll) {
           bizCheckAll.checked = rows.length > 0 && rows.every(r => selectedBusinessRows.has(String(r.id)));
@@ -1271,10 +1283,7 @@ export async function initWmsPrintTemplateApp() {
         });
         document.querySelectorAll("[data-biz-act]").forEach(el => {
           el.onclick = () => {
-            const act = el.dataset.bizAct;
-            const id = el.dataset.bizId;
-            if (act === "edit") openBizDataModal(id);
-            if (act === "delete") deleteBizData(id);
+            if (el.dataset.bizAct === "view") openBizDataDetailModal(el.dataset.bizCode);
           };
         });
         document.querySelectorAll("[data-biz-page]").forEach(btn => {
@@ -1298,287 +1307,28 @@ export async function initWmsPrintTemplateApp() {
         </div><span class="section-meta">共 ${total} 条</span></div>`;
       }
 
-      function openBizDataModal(editId = null) {
+      async function openBizDataDetailModal(bizCode) {
         const type = businessDataFilters.type;
         const fields = FIELD_DICT[type] || [];
-        const isEdit = !!editId;
-        let editData = null;
-
-        const renderForm = async () => {
-          if (isEdit) {
-            try {
-              editData = await apiGetBusinessData(editId);
-            } catch (err) {
-              toast(`获取数据失败：${err.message}`);
-              return;
-            }
-          }
-          const data = editData ? editData.fields : {};
-          document.getElementById("genericModalTitle").textContent = isEdit ? "编辑业务数据" : "新增业务数据";
-          document.getElementById("genericModalBody").innerHTML = `
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label class="form-label">业务类型</label>
-                <input class="form-control" disabled value="${TYPE_LABEL[type]||type}">
-              </div>
-              ${fields.map(f => {
-                const val = data[f.code] ?? "";
-                const required = f.required;
-                const isSelect = f.type === 'select';
-                const options = isSelect ? (() => { try { return JSON.parse(f.example || '[]'); } catch { return []; } })() : [];
-                const inputHtml = isSelect
-                  ? `<select class="form-select biz-field-input" data-field="${f.code}" data-required="${required}">
-                      <option value="">请选择</option>
-                      ${options.map(opt => `<option value="${escAttr(opt)}" ${val === opt ? 'selected' : ''}>${escHtml(opt)}</option>`).join("")}
-                    </select>`
-                  : `<input class="form-control biz-field-input" data-field="${f.code}" data-required="${required}" type="${f.type==='integer'?'number':'text'}" value="${escAttr(val)}" placeholder="${escAttr(f.example||'')}">`;
-                return `<div class="col-md-6 mb-3">
-                  <label class="form-label">${f.name}${required?'<span style="color:red">*</span>':''}</label>
-                  ${inputHtml}
-                </div>`;
-              }).join("")}
-            </div>`;
-          document.getElementById("genericModalFoot").innerHTML = `
-            <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
-            <button class="btn btn-primary-wms" id="bizSaveBtn">保存</button>`;
-          genericModal.show();
-
-          document.getElementById("bizSaveBtn").onclick = async () => {
-            const bizData = {};
-            let hasError = false;
-            document.querySelectorAll(".biz-field-input").forEach(input => {
-              const code = input.dataset.field;
-              let val = input.value.trim();
-              if (input.dataset.required === "true" && !val) {
-                const label = fields.find(f => f.code === code)?.name || code;
-                toast(`必填字段 [${label}] 不能为空`);
-                hasError = true;
-                return;
-              }
-              if (input.type === "number") val = val === "" ? "" : String(val);
-              bizData[code] = val;
-            });
-            if (hasError) return;
-
-            try {
-              if (isEdit) {
-                await apiUpdateBusinessData(editId, { businessData: bizData });
-                toast("更新成功");
-              } else {
-                await apiCreateBusinessData({ businessType: type, businessData: bizData });
-                toast("创建成功");
-              }
-              genericModal.hide();
-              renderBusiness();
-            } catch (err) {
-              toast(`操作失败：${err.message}`);
-            }
-          };
-        };
-        renderForm();
-      }
-
-      async function deleteBizData(id) {
-        if (!confirm("确定删除该业务数据？此操作不可恢复。")) return;
-        try {
-          await apiDeleteBusinessData(id);
-          toast("删除成功");
-          renderBusiness();
-        } catch (err) {
-          toast(`删除失败：${err.message}`);
-        }
-      }
-
-      function openBizDataImportModal() {
-        const type = businessDataFilters.type;
-        const fields = FIELD_DICT[type] || [];
-
-        // Build a map: Chinese field name -> field code
-        const fieldHeaderMap = {};
-        fields.forEach(f => { fieldHeaderMap[f.name] = f.code; });
-
-        // State: parsed rows from the selected file
-        let parsedRows = [];
-
-        document.getElementById("genericModalTitle").textContent = "导入业务数据";
-        document.getElementById("genericModalBody").innerHTML = `
-          <div class="mb-3">
-            <label class="form-label">业务类型</label>
-            <input class="form-control" disabled value="${TYPE_LABEL[type] || type}">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">选择文件 <span style="color:red">*</span></label>
-            <input class="form-control" type="file" id="importFileInput" accept=".xlsx,.xls">
-            <small class="text-muted" style="display:block;margin-top:4px">
-              第一行必须是字段名称（中文），从第二行起为数据。必填字段（带红色星号）必须有值。支持 .xlsx / .xls 格式。
-            </small>
-          </div>
-          <div class="mb-3">
-            <button class="btn btn-secondary-wms" id="downloadTemplateBtn">下载模板文件</button>
-          </div>
-          <div id="importPreviewArea" style="display:none">
-            <hr>
-            <div class="section-head">
-              <span class="section-meta" id="importPreviewInfo"></span>
-            </div>
-            <div class="table-wrap" style="max-height:300px;overflow:auto">
-              <table class="table align-middle">
-                <thead id="importPreviewHead"></thead>
-                <tbody id="importPreviewBody"></tbody>
-              </table>
-            </div>
-          </div>`;
-        document.getElementById("genericModalFoot").innerHTML = `
-          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
-          <button class="btn btn-primary-wms" id="importConfirmBtn" disabled>导入</button>`;
+        document.getElementById("genericModalTitle").textContent = "业务数据详情";
+        document.getElementById("genericModalBody").innerHTML = `<div class="empty-state">正在加载业务数据...</div>`;
+        document.getElementById("genericModalFoot").innerHTML = `<button class="btn btn-primary-wms" data-bs-dismiss="modal">关闭</button>`;
         genericModal.show();
-
-        // -- Download Template --
-        document.getElementById("downloadTemplateBtn").onclick = async () => {
-          const XLSX = await import('xlsx');
-          const headerNames = fields.map(f => f.name);
-          const wb = XLSX.utils.book_new();
-          const ws = XLSX.utils.aoa_to_sheet([headerNames]);
-          XLSX.utils.book_append_sheet(wb, ws, '业务数据');
-          const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-          const blob = new Blob([wbout], { type: 'application/octet-stream' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${TYPE_LABEL[type] || type}_导入模板.xlsx`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        };
-
-        // -- File selection --
-        document.getElementById("importFileInput").onchange = async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          // Validate file size (max 5MB)
-          if (file.size > 5 * 1024 * 1024) {
-            toast("文件大小不能超过 5MB");
-            e.target.value = '';
-            return;
-          }
-
-          try {
-            const data = await file.arrayBuffer();
-            const XLSX = await import('xlsx');
-            const workbook = XLSX.read(data, { type: 'array' });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-            if (rows.length < 2) {
-              toast("文件至少需要包含表头一行和一条数据");
-              e.target.value = '';
-              return;
-            }
-
-            // Parse headers (first row)
-            const headers = rows[0].map(h => String(h || '').trim());
-            const codeHeaders = headers.map(h => fieldHeaderMap[h]);
-            const unknownHeaders = headers.filter((h, i) => !fieldHeaderMap[h] && h);
-            if (unknownHeaders.length > 0) {
-              toast(`无法识别的字段名：${unknownHeaders.join('、')}`);
-              e.target.value = '';
-              return;
-            }
-
-            // Parse data rows
-            parsedRows = [];
-            const rowErrors = [];
-            const requiredFields = fields.filter(f => f.required);
-
-            for (let i = 1; i < rows.length; i++) {
-              const row = rows[i];
-              // Skip completely empty rows
-              if (!row || (Array.isArray(row) && row.every(c => c === undefined || c === null || String(c).trim() === ''))) {
-                continue;
-              }
-              const rowData = {};
-              for (let j = 0; j < codeHeaders.length; j++) {
-                const code = codeHeaders[j];
-                if (code) rowData[code] = String(row[j] ?? '').trim();
-              }
-
-              // Validate required fields
-              let hasError = false;
-              for (const rf of requiredFields) {
-                if (!rowData[rf.code]) {
-                  rowErrors.push(`第 ${i + 1} 行：必填字段 [${rf.name}] 不能为空`);
-                  hasError = true;
-                  break;
-                }
-              }
-              if (hasError) continue;
-
-              parsedRows.push(rowData);
-            }
-
-            if (rowErrors.length > 0) {
-              toast(`数据校验有 ${rowErrors.length} 个错误，已跳过`);
-            }
-
-            if (parsedRows.length === 0) {
-              toast("没有有效的数据行可导入");
-              document.getElementById("importPreviewArea").style.display = "none";
-              document.getElementById("importConfirmBtn").disabled = true;
-              return;
-            }
-
-            // Show preview
-            const previewHeaderNames = fields.map(f => f.name);
-            document.getElementById("importPreviewInfo").textContent =
-              `共解析 ${parsedRows.length} 条有效数据${rowErrors.length ? `，${rowErrors.length} 条错误已跳过` : ''}`;
-            document.getElementById("importPreviewHead").innerHTML =
-              `<tr>${previewHeaderNames.map(h => `<th class="text-start">${escHtml(h)}</th>`).join('')}</tr>`;
-            const previewRows = parsedRows.slice(0, 20);
-            document.getElementById("importPreviewBody").innerHTML = previewRows.map(r =>
-              `<tr>${fields.map(f => `<td class="text-start">${escHtml(r[f.code] || '-')}</td>`).join('')}</tr>`
-            ).join('');
-            if (parsedRows.length > 20) {
-              document.getElementById("importPreviewBody").innerHTML +=
-                `<tr><td colspan="${fields.length}" class="text-center text-muted">... 仅显示前 20 条，共 ${parsedRows.length} 条</td></tr>`;
-            }
-            document.getElementById("importPreviewArea").style.display = "block";
-            document.getElementById("importConfirmBtn").disabled = false;
-          } catch (err) {
-            toast(`文件解析失败：${err.message}`);
-            e.target.value = '';
-          }
-        };
-
-        // -- Import confirm --
-        document.getElementById("importConfirmBtn").onclick = async () => {
-          if (parsedRows.length === 0) return toast("没有可导入的数据");
-
-          const btn = document.getElementById("importConfirmBtn");
-          btn.disabled = true;
-          btn.textContent = "导入中...";
-
-          try {
-            const result = await apiImportBusinessData({
-              businessType: type,
-              rows: parsedRows,
-            });
-
-            if (result.skipCount > 0) {
-              toast(`导入完成：成功 ${result.successCount} 条，跳过 ${result.skipCount} 条（编码已存在）`);
-            } else {
-              toast(`导入成功：共 ${result.successCount} 条`);
-            }
-
-            genericModal.hide();
-            renderBusiness();
-          } catch (err) {
-            toast(`导入失败：${err.message}`);
-            btn.disabled = false;
-            btn.textContent = "导入";
-          }
-        };
+        try {
+          const detail = await apiGetBusinessDataDetail(type, bizCode);
+          document.getElementById("genericModalBody").innerHTML = `
+            <div class="table-wrap">
+              <table class="table align-middle">
+                <tbody>
+                  <tr><th class="text-start" style="width:160px">业务类型</th><td class="text-start">${TYPE_LABEL[type]||type}</td></tr>
+                  <tr><th class="text-start">业务编码</th><td class="text-start">${escHtml(detail.businessCode)}</td></tr>
+                  ${fields.map(f=>`<tr><th class="text-start">${escHtml(f.name)}</th><td class="text-start">${escHtml(detail.fields?.[f.code] ?? "-")}</td></tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`;
+        } catch (err) {
+          document.getElementById("genericModalBody").innerHTML = `<div class="empty-state">加载失败：${escHtml(err.message || "请求失败")}</div>`;
+        }
       }
 
       async function openPrintModal(template = null, preselectedData = null) {

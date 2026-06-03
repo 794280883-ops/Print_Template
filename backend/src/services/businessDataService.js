@@ -1,171 +1,42 @@
+import { getBusinessDataMapping, listBusinessTypeConfigs } from "../config/businessDataMapping.js";
 import * as businessDataRepo from "../repositories/businessDataRepository.js";
-import { listFields } from "../repositories/fieldRepository.js";
 import { appError } from "../utils/response.js";
 
-const VALID_TYPES = ["LOCATION", "CONTAINER", "PRODUCT"];
-
-function toDto(row) {
-  return {
-    id: String(row.id),
-    businessType: row.business_type,
-    businessCode: row.business_code,
-    fields: typeof row.business_data === "string" ? JSON.parse(row.business_data) : row.business_data,
-    updatedAt: row.updated_at,
-  };
+export function listBusinessTypes() {
+  return listBusinessTypeConfigs().map((item) => ({
+    code: item.code,
+    label: item.label,
+    fields: item.fields.map(({ code, name }) => ({ code, name })),
+  }));
 }
 
-export async function listBusinessData(type, query = {}) {
-  if (!type) throw appError("缺少业务类型参数 type", 40000, 400);
-  const upperType = String(type).toUpperCase();
-  if (!VALID_TYPES.includes(upperType)) throw appError(`无效的业务类型：${type}，仅支持 LOCATION / CONTAINER / PRODUCT`, 40000, 400);
+export async function listWarehouses(query = {}) {
+  const mapping = query.bizType ? getRequiredMapping(query.bizType) : null;
+  const mappings = mapping ? [mapping] : listBusinessTypeConfigs();
+  return businessDataRepo.listWarehouses(mappings);
+}
 
-  const { rows, total } = await businessDataRepo.listByType(upperType, {
-    keyword: query.keyword || "",
-    page: query.page || 1,
-    pageSize: query.pageSize || 20,
+export async function searchBusinessData(query = {}) {
+  const mapping = getRequiredMapping(query.bizType || query.type);
+  return businessDataRepo.search(mapping, {
+    keyword: String(query.keyword || "").trim(),
+    warehouseCode: String(query.warehouseCode || "").trim(),
+    page: query.page,
+    pageSize: query.pageSize,
   });
-
-  return {
-    rows: rows.map(toDto),
-    total,
-    page: Number(query.page) || 1,
-    pageSize: Number(query.pageSize) || 20,
-  };
 }
 
-export async function getBusinessData(id) {
-  const row = await businessDataRepo.getById(id);
+export async function getBusinessDataDetail(bizType, bizCode) {
+  const mapping = getRequiredMapping(bizType);
+  const code = String(bizCode || "").trim();
+  if (!code) throw appError("缺少业务编码", 40000, 400);
+  const row = await businessDataRepo.getDetail(mapping, code);
   if (!row) throw appError("业务数据不存在", 40400, 404);
-  return toDto(row);
+  return row;
 }
 
-export async function createBusinessData(input) {
-  const businessType = String(input.businessType || "").toUpperCase();
-  if (!VALID_TYPES.includes(businessType)) throw appError("无效的业务类型", 40000, 400);
-
-  const fields = await listFields(businessType);
-  const data = input.businessData || {};
-
-  // Validate required fields
-  for (const field of fields) {
-    if (field.is_required) {
-      const value = data[field.field_code];
-      if (value === undefined || value === null || String(value).trim() === "") {
-        throw appError(`必填字段 [${field.field_name}] 不能为空`, 40000, 400);
-      }
-    }
-  }
-
-  // Derive business_code from the primary identifier field
-  const primaryField = fields.find(f => f.is_required && f.sort_no <= 10);
-  const businessCode = data[primaryField?.field_code] || input.businessCode;
-  if (!businessCode || !String(businessCode).trim()) {
-    throw appError("业务编码不能为空", 40000, 400);
-  }
-
-  // Check uniqueness
-  const existing = await businessDataRepo.getByCode(businessType, String(businessCode).trim());
-  if (existing) throw appError(`业务编码 [${businessCode}] 已存在`, 40001, 409);
-
-  const row = await businessDataRepo.create({
-    businessType,
-    businessCode: String(businessCode).trim(),
-    businessData: data,
-  });
-
-  return toDto(row);
-}
-
-export async function updateBusinessData(id, input) {
-  const existing = await businessDataRepo.getById(id);
-  if (!existing) throw appError("业务数据不存在", 40400, 404);
-
-  const businessType = existing.business_type;
-  const fields = await listFields(businessType);
-  const data = input.businessData || {};
-
-  // Validate required fields
-  for (const field of fields) {
-    if (field.is_required) {
-      const value = data[field.field_code];
-      if (value === undefined || value === null || String(value).trim() === "") {
-        throw appError(`必填字段 [${field.field_name}] 不能为空`, 40000, 400);
-      }
-    }
-  }
-
-  // Derive business_code
-  const primaryField = fields.find(f => f.is_required && f.sort_no <= 10);
-  const businessCode = data[primaryField?.field_code] || input.businessCode;
-  if (!businessCode || !String(businessCode).trim()) {
-    throw appError("业务编码不能为空", 40000, 400);
-  }
-
-  // Check uniqueness (exclude current id)
-  const dup = await businessDataRepo.getByCode(businessType, String(businessCode).trim());
-  if (dup && Number(dup.id) !== Number(id)) {
-    throw appError(`业务编码 [${businessCode}] 已存在`, 40001, 409);
-  }
-
-  const row = await businessDataRepo.update(id, {
-    businessCode: String(businessCode).trim(),
-    businessData: data,
-  });
-
-  return toDto(row);
-}
-
-export async function importBusinessData(input) {
-  const businessType = String(input.businessType || "").toUpperCase();
-  if (!VALID_TYPES.includes(businessType)) throw appError("无效的业务类型", 40000, 400);
-
-  const fields = await listFields(businessType);
-  const rows = input.rows || [];
-  if (!rows.length) throw appError("导入数据不能为空", 40000, 400);
-
-  const existingCodes = await businessDataRepo.listCodesByType(businessType);
-  const existingSet = new Set(existingCodes.map(r => r.business_code));
-
-  const primaryField = fields.find(f => f.is_required && f.sort_no <= 10);
-
-  let successCount = 0;
-  let skipCount = 0;
-  const skippedCodes = [];
-
-  for (const row of rows) {
-    // Validate required fields
-    let hasError = false;
-    for (const field of fields) {
-      if (field.is_required) {
-        const value = row[field.field_code];
-        if (value === undefined || value === null || String(value).trim() === "") {
-          hasError = true;
-          break;
-        }
-      }
-    }
-    if (hasError) { skipCount++; continue; }
-
-    // Derive business_code
-    const businessCode = row[primaryField?.field_code];
-    if (!businessCode || !String(businessCode).trim()) { skipCount++; continue; }
-    const code = String(businessCode).trim();
-
-    // Check duplicate
-    if (existingSet.has(code)) { skipCount++; skippedCodes.push(code); continue; }
-
-    // Insert
-    await businessDataRepo.create({ businessType, businessCode: code, businessData: row });
-    existingSet.add(code);
-    successCount++;
-  }
-
-  return { successCount, skipCount, skippedCodes, total: rows.length };
-}
-
-export async function deleteBusinessData(id) {
-  const existing = await businessDataRepo.getById(id);
-  if (!existing) throw appError("业务数据不存在", 40400, 404);
-  await businessDataRepo.remove(id);
-  return { id: String(id) };
+function getRequiredMapping(bizType) {
+  const mapping = getBusinessDataMapping(bizType);
+  if (!mapping) throw appError(`无效的业务类型：${bizType}，仅支持 LOCATION / CONTAINER / PRODUCT`, 40000, 400);
+  return mapping;
 }

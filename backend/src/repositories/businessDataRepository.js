@@ -1,68 +1,154 @@
-import { pool } from "../config/db.js";
+import { testDbPool } from "../config/testDb.js";
 
-export async function listByType(type, { keyword, page, pageSize } = {}) {
+const IDENTIFIER_RE = /^[A-Za-z0-9_]+$/;
+const MAX_PAGE_SIZE = 200;
+
+export function normalizePaging({ page, pageSize } = {}) {
   const safePage = Math.max(1, Number(page) || 1);
-  const safeSize = Math.min(200, Math.max(1, Number(pageSize) || 20));
-  const offset = (safePage - 1) * safeSize;
+  const safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(pageSize) || 20));
+  return { page: safePage, pageSize: safeSize, offset: (safePage - 1) * safeSize };
+}
 
-  let where = "WHERE business_type = ?";
-  const params = [type];
+export async function search(mapping, query = {}) {
+  const paging = normalizePaging(query);
+  const where = buildWhere(mapping, query);
+  const select = buildSelect(mapping);
+  const table = quoteIdentifier(mapping.table);
+  const orderSql = mapping.updatedAtColumn
+    ? `${quoteIdentifier(mapping.updatedAtColumn)} DESC, ${quoteIdentifier(mapping.bizCodeColumn)} DESC`
+    : `${quoteIdentifier(mapping.bizCodeColumn)} DESC`;
 
-  if (keyword) {
-    where += " AND business_code LIKE ?";
-    params.push(`%${keyword}%`);
+  const [[{ total }]] = await testDbPool.query(
+    `SELECT COUNT(*) AS total FROM ${table} ${where.sql}`,
+    where.params,
+  );
+
+  const [rows] = await testDbPool.query(
+    `SELECT ${select.sql}
+     FROM ${table}
+     ${where.sql}
+     ORDER BY ${orderSql}
+     LIMIT ? OFFSET ?`,
+    [...select.params, ...where.params, paging.pageSize, paging.offset],
+  );
+
+  return { rows: rows.map((row) => toDto(mapping, row)), total, page: paging.page, pageSize: paging.pageSize };
+}
+
+export async function getDetail(mapping, bizCode) {
+  const select = buildSelect(mapping);
+  const table = quoteIdentifier(mapping.table);
+  const where = [`${quoteIdentifier(mapping.bizCodeColumn)} = ?`];
+  const params = [bizCode];
+  if (mapping.typeColumn) {
+    where.unshift(`${quoteIdentifier(mapping.typeColumn)} = ?`);
+    params.unshift(mapping.typeValue);
   }
 
-  const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total FROM business_data ${where}`,
+  const [rows] = await testDbPool.query(
+    `SELECT ${select.sql}
+     FROM ${table}
+     WHERE ${where.join(" AND ")}
+     LIMIT 1`,
+    [...select.params, ...params],
+  );
+  return rows[0] ? toDto(mapping, rows[0]) : null;
+}
+
+export async function listWarehouses(mappings) {
+  const result = new Map();
+  for (const mapping of mappings) {
+    if (!mapping.warehouse) continue;
+    const table = quoteIdentifier(mapping.table);
+    const warehouse = sourceExpression(mapping, mapping.warehouse);
+    const where = [];
+    const params = [...warehouse.params];
+    if (mapping.typeColumn) {
+      where.push(`${quoteIdentifier(mapping.typeColumn)} = ?`);
+      params.push(mapping.typeValue);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const [rows] = await testDbPool.query(
+      `SELECT DISTINCT ${warehouse.sql} AS warehouseCode
+       FROM ${table}
+       ${whereSql}
+       HAVING warehouseCode IS NOT NULL AND warehouseCode <> ''
+       ORDER BY warehouseCode ASC
+       LIMIT 500`,
+      params,
+    );
+    for (const row of rows) {
+      const code = String(row.warehouseCode || "").trim();
+      if (code && !result.has(code)) result.set(code, { warehouseCode: code, warehouseName: code });
+    }
+  }
+  return [...result.values()];
+}
+
+function buildSelect(mapping) {
+  const parts = [`${quoteIdentifier(mapping.bizCodeColumn)} AS businessCode`];
+  const params = [];
+  if (mapping.updatedAtColumn) parts.push(`${quoteIdentifier(mapping.updatedAtColumn)} AS updatedAt`);
+  for (const field of mapping.fields) {
+    const expr = sourceExpression(mapping, field);
+    parts.push(`${expr.sql} AS ${quoteIdentifier(field.code)}`);
+    params.push(...expr.params);
+  }
+  return { sql: parts.join(", "), params };
+}
+
+function buildWhere(mapping, query) {
+  const where = [];
+  const params = [];
+  if (mapping.typeColumn) {
+    where.push(`${quoteIdentifier(mapping.typeColumn)} = ?`);
+    params.push(mapping.typeValue);
+  }
+  if (query.keyword) {
+    const keywordParts = [];
+    for (const source of mapping.keyword || []) {
+      const expr = sourceExpression(mapping, source);
+      keywordParts.push(`${expr.sql} LIKE ?`);
+      params.push(...expr.params, `%${query.keyword}%`);
+    }
+    if (keywordParts.length) where.push(`(${keywordParts.join(" OR ")})`);
+  }
+  if (query.warehouseCode && mapping.warehouse) {
+    const expr = sourceExpression(mapping, mapping.warehouse);
+    where.push(`${expr.sql} = ?`);
+    params.push(...expr.params, query.warehouseCode);
+  }
+  return {
+    sql: where.length ? `WHERE ${where.join(" AND ")}` : "",
     params,
-  );
-
-  const [rows] = await pool.query(
-    `SELECT * FROM business_data ${where} ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
-    [...params, safeSize, offset],
-  );
-
-  return { rows, total };
+  };
 }
 
-export async function getById(id) {
-  const [[row]] = await pool.query("SELECT * FROM business_data WHERE id = ?", [id]);
-  return row || null;
+function sourceExpression(mapping, source) {
+  if (source.source === "column") return { sql: quoteIdentifier(source.column), params: [] };
+  if (source.source === "json") {
+    return {
+      sql: `JSON_UNQUOTE(JSON_EXTRACT(${quoteIdentifier(mapping.fieldsJsonColumn)}, ?))`,
+      params: [source.path],
+    };
+  }
+  throw new Error(`Unsupported business data source: ${source.source}`);
 }
 
-export async function getByCode(type, businessCode) {
-  const [[row]] = await pool.query(
-    "SELECT * FROM business_data WHERE business_type = ? AND business_code = ?",
-    [type, businessCode],
-  );
-  return row || null;
+function toDto(mapping, row) {
+  const fields = {};
+  for (const field of mapping.fields) fields[field.code] = row[field.code] ?? "";
+  return {
+    id: `${mapping.code}:${row.businessCode}`,
+    businessType: mapping.code,
+    businessCode: row.businessCode,
+    fields,
+    updatedAt: row.updatedAt || "",
+  };
 }
 
-export async function create({ businessType, businessCode, businessData }) {
-  const [result] = await pool.query(
-    "INSERT INTO business_data (business_type, business_code, business_data) VALUES (?, ?, ?)",
-    [businessType, businessCode, JSON.stringify(businessData)],
-  );
-  return getById(result.insertId);
-}
-
-export async function update(id, { businessCode, businessData }) {
-  await pool.query(
-    "UPDATE business_data SET business_code = ?, business_data = ? WHERE id = ?",
-    [businessCode, JSON.stringify(businessData), id],
-  );
-  return getById(id);
-}
-
-export async function listCodesByType(type) {
-  const [rows] = await pool.query(
-    "SELECT business_code FROM business_data WHERE business_type = ?",
-    [type],
-  );
-  return rows;
-}
-
-export async function remove(id) {
-  await pool.query("DELETE FROM business_data WHERE id = ?", [id]);
+function quoteIdentifier(value) {
+  const text = String(value || "");
+  if (!IDENTIFIER_RE.test(text)) throw new Error(`Unsafe identifier: ${text}`);
+  return `\`${text}\``;
 }

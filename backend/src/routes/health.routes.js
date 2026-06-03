@@ -5,3 +5,4 @@ import { asyncHandler } from "../middlewares/asyncHandler.js";
 export const healthRouter = Router();
 
 healthRouter.get("/health", asyncHandler(healthController.health));
+healthRouter.get("/health/db", asyncHandler(healthController.testDatabaseHealth));
