@@ -19,7 +19,7 @@ export const businessDataMappings = {
       { code: "row", name: "排", source: "column", column: "location_row" },
       { code: "column", name: "列", source: "column", column: "location_column" },
       { code: "level", name: "层", source: "column", column: "location_floor" },
-      { code: "directionMark", name: "方向标", source: "column", column: "direction_flag" },
+      { code: "directionMark", name: "方向标", source: "column", column: "direction_flag", transform: "locationDirectionMark" },
       { code: "warehouseCode", name: "区域仓编码", source: "column", column: "region_warehouse_code" },
       { code: "areaCode", name: "物理仓编码", source: "column", column: "physics_warehouse_code" },
     ],

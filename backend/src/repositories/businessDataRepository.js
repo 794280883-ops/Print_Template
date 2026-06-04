@@ -137,7 +137,7 @@ function sourceExpression(mapping, source) {
 
 function toDto(mapping, row) {
   const fields = {};
-  for (const field of mapping.fields) fields[field.code] = row[field.code] ?? "";
+  for (const field of mapping.fields) fields[field.code] = transformFieldValue(field, row[field.code]);
   return {
     id: `${mapping.code}:${row.businessCode}`,
     businessType: mapping.code,
@@ -145,6 +145,18 @@ function toDto(mapping, row) {
     fields,
     updatedAt: row.updatedAt || "",
   };
+}
+
+function transformFieldValue(field, value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (field.transform === "locationDirectionMark") {
+    const directionMap = {
+      1: "向上",
+      2: "向下",
+    };
+    return directionMap[String(value).trim()] || "";
+  }
+  return value;
 }
 
 function quoteIdentifier(value) {
