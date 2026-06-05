@@ -6,7 +6,7 @@ export const businessDataMappings = {
     typeColumn: null,
     typeValue: null,
     bizCodeColumn: "location_code",
-    updatedAtColumn: null,
+    updatedAtColumn: "updated_at",
     fieldsJsonColumn: null,
     warehouse: { source: "column", column: "region_warehouse_code" },
     keyword: [
@@ -14,7 +14,7 @@ export const businessDataMappings = {
       { source: "column", column: "location_prefix" },
     ],
     fields: [
-      { code: "locationCode", name: "库位编码", source: "column", column: "location_code" },
+      { code: "locationCode", name: "库位编码", source: "column", column: "location_code", required: true },
       { code: "locationPrefix", name: "库位前缀", source: "column", column: "location_prefix" },
       { code: "row", name: "排", source: "column", column: "location_row" },
       { code: "column", name: "列", source: "column", column: "location_column" },
@@ -31,14 +31,14 @@ export const businessDataMappings = {
     typeColumn: null,
     typeValue: null,
     bizCodeColumn: "container_code",
-    updatedAtColumn: null,
+    updatedAtColumn: "updated_at",
     fieldsJsonColumn: null,
     warehouse: { source: "column", column: "region_warehouse_code" },
     keyword: [
       { source: "column", column: "container_code" },
     ],
     fields: [
-      { code: "containerCode", name: "容器编码", source: "column", column: "container_code" },
+      { code: "containerCode", name: "容器编码", source: "column", column: "container_code", required: true },
       { code: "warehouseCode", name: "区域仓编码", source: "column", column: "region_warehouse_code" },
       { code: "areaCode", name: "物理仓编码", source: "column", column: "physics_warehouse_code" },
     ],
@@ -50,7 +50,7 @@ export const businessDataMappings = {
     typeColumn: null,
     typeValue: null,
     bizCodeColumn: "sku",
-    updatedAtColumn: null,
+    updatedAtColumn: "updated_at",
     fieldsJsonColumn: null,
     warehouse: null,
     keyword: [
@@ -58,7 +58,7 @@ export const businessDataMappings = {
       { source: "column", column: "customer_code" },
     ],
     fields: [
-      { code: "productCode", name: "商品编码", source: "column", column: "sku" },
+      { code: "productCode", name: "商品编码", source: "column", column: "sku", required: true },
       { code: "customerProductCode", name: "客户商品编码", source: "column", column: "customer_code" },
     ],
   },

@@ -1,4 +1,4 @@
-import { request, toQuery } from "./request.js";
+import { API_BASE_URL, request, toQuery } from "./request.js";
 
 export function listTemplates(filters = {}) {
   return request(`/templates${toQuery(filters)}`);
@@ -65,7 +65,7 @@ export function listFields(templateType) {
  * Returns a Blob that can be used to trigger a browser download.
  */
 export async function downloadPrintPdf(payload) {
-  const res = await fetch("/api/v1/print/pdf", {
+  const res = await fetch(`${API_BASE_URL}/print/pdf`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

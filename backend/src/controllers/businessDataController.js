@@ -16,3 +16,15 @@ export async function search(req, res) {
 export async function detail(req, res) {
   sendSuccess(res, await businessDataService.getBusinessDataDetail(req.params.bizType, req.params.bizCode));
 }
+
+export async function create(req, res) {
+  sendSuccess(res, await businessDataService.createBusinessData(req.body));
+}
+
+export async function update(req, res) {
+  sendSuccess(res, await businessDataService.updateBusinessData(req.params.bizType, req.params.bizCode, req.body));
+}
+
+export async function remove(req, res) {
+  sendSuccess(res, await businessDataService.deleteBusinessData(req.params.bizType, req.params.bizCode));
+}

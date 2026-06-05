@@ -1,4 +1,4 @@
-import { testDbPool } from "../config/testDb.js";
+import { pool } from "../config/db.js";
 
 const IDENTIFIER_RE = /^[A-Za-z0-9_]+$/;
 const MAX_PAGE_SIZE = 200;
@@ -18,12 +18,12 @@ export async function search(mapping, query = {}) {
     ? `${quoteIdentifier(mapping.updatedAtColumn)} DESC, ${quoteIdentifier(mapping.bizCodeColumn)} DESC`
     : `${quoteIdentifier(mapping.bizCodeColumn)} DESC`;
 
-  const [[{ total }]] = await testDbPool.query(
+  const [[{ total }]] = await pool.query(
     `SELECT COUNT(*) AS total FROM ${table} ${where.sql}`,
     where.params,
   );
 
-  const [rows] = await testDbPool.query(
+  const [rows] = await pool.query(
     `SELECT ${select.sql}
      FROM ${table}
      ${where.sql}
@@ -45,7 +45,7 @@ export async function getDetail(mapping, bizCode) {
     params.unshift(mapping.typeValue);
   }
 
-  const [rows] = await testDbPool.query(
+  const [rows] = await pool.query(
     `SELECT ${select.sql}
      FROM ${table}
      WHERE ${where.join(" AND ")}
@@ -53,6 +53,38 @@ export async function getDetail(mapping, bizCode) {
     [...select.params, ...params],
   );
   return rows[0] ? toDto(mapping, rows[0]) : null;
+}
+
+export async function create(mapping, fields = {}) {
+  const insert = buildWrite(mapping, fields);
+  const table = quoteIdentifier(mapping.table);
+  await pool.query(
+    `INSERT INTO ${table} (${insert.columns.join(", ")})
+     VALUES (${insert.placeholders.join(", ")})`,
+    insert.values,
+  );
+  return getDetail(mapping, fields[bizFieldCode(mapping)]);
+}
+
+export async function update(mapping, bizCode, fields = {}) {
+  const write = buildWrite(mapping, fields);
+  const table = quoteIdentifier(mapping.table);
+  await pool.query(
+    `UPDATE ${table}
+     SET ${write.columns.map((column) => `${column} = ?`).join(", ")}
+     WHERE ${quoteIdentifier(mapping.bizCodeColumn)} = ?`,
+    [...write.values, bizCode],
+  );
+  return getDetail(mapping, fields[bizFieldCode(mapping)]);
+}
+
+export async function remove(mapping, bizCode) {
+  const table = quoteIdentifier(mapping.table);
+  const [result] = await pool.query(
+    `DELETE FROM ${table} WHERE ${quoteIdentifier(mapping.bizCodeColumn)} = ?`,
+    [bizCode],
+  );
+  return result.affectedRows;
 }
 
 export async function listWarehouses(mappings) {
@@ -68,7 +100,7 @@ export async function listWarehouses(mappings) {
       params.push(mapping.typeValue);
     }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const [rows] = await testDbPool.query(
+    const [rows] = await pool.query(
       `SELECT DISTINCT ${warehouse.sql} AS warehouseCode
        FROM ${table}
        ${whereSql}
@@ -83,6 +115,24 @@ export async function listWarehouses(mappings) {
     }
   }
   return [...result.values()];
+}
+
+function buildWrite(mapping, fields) {
+  const columns = [];
+  const placeholders = [];
+  const values = [];
+  for (const field of mapping.fields) {
+    if (field.source !== "column") continue;
+    columns.push(quoteIdentifier(field.column));
+    placeholders.push("?");
+    values.push(toStorageValue(field, fields[field.code]));
+  }
+  return { columns, placeholders, values };
+}
+
+function bizFieldCode(mapping) {
+  const field = mapping.fields.find((item) => item.source === "column" && item.column === mapping.bizCodeColumn);
+  return field?.code || "";
 }
 
 function buildSelect(mapping) {
@@ -145,6 +195,22 @@ function toDto(mapping, row) {
     fields,
     updatedAt: row.updatedAt || "",
   };
+}
+
+function toStorageValue(field, value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (field.transform === "locationDirectionMark") {
+    const directionMap = {
+      "1": "1",
+      "2": "2",
+      "向上": "1",
+      "向下": "2",
+      "↑": "1",
+      "↓": "2",
+    };
+    return directionMap[String(value).trim()] || null;
+  }
+  return value;
 }
 
 function transformFieldValue(field, value) {

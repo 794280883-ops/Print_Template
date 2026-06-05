@@ -19,3 +19,23 @@ export function searchBusinessData(params = {}) {
 export function getBusinessDataDetail(bizType, bizCode) {
   return request(`/business-data/detail/${encodeURIComponent(bizType)}/${encodeURIComponent(bizCode)}`);
 }
+
+export function createBusinessData(bizType, fields) {
+  return request("/business-data", {
+    method: "POST",
+    body: JSON.stringify({ bizType, fields }),
+  });
+}
+
+export function updateBusinessData(bizType, bizCode, fields) {
+  return request(`/business-data/${encodeURIComponent(bizType)}/${encodeURIComponent(bizCode)}`, {
+    method: "PUT",
+    body: JSON.stringify({ fields }),
+  });
+}
+
+export function deleteBusinessData(bizType, bizCode) {
+  return request(`/business-data/${encodeURIComponent(bizType)}/${encodeURIComponent(bizCode)}`, {
+    method: "DELETE",
+  });
+}

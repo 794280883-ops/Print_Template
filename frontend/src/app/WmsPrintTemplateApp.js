@@ -25,6 +25,9 @@ import {
   listBusinessData as apiListBusinessData,
   getBusinessDataDetail as apiGetBusinessDataDetail,
   listWarehouses as apiListWarehouses,
+  createBusinessData as apiCreateBusinessData,
+  updateBusinessData as apiUpdateBusinessData,
+  deleteBusinessData as apiDeleteBusinessData,
 } from '../api/businessDataApi.js';
 import { sampleByType, fieldExists } from '../services/templateDslService.js';
 import { getPrintableTemplate, normalizePrintRotation } from '../services/printRotationService.js';
@@ -1210,6 +1213,7 @@ export async function initWmsPrintTemplateApp() {
             <div class="section-head">
               <div class="toolbar-actions">
                 <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
+                <button class="btn btn-primary-wms" id="bizCreateBtn">新增</button>
               </div>
               <div>
                 <span class="section-meta">${loading ? "加载中..." : `共 ${total} 条`}</span>
@@ -1227,6 +1231,8 @@ export async function initWmsPrintTemplateApp() {
                   ${fields.map(f=>`<td class="text-start">${escHtml(r.fields[f.code] ?? "-")}</td>`).join("")}
                   <td class="text-start">
                     <span class="action-link" data-biz-act="view" data-biz-code="${escAttr(r.businessCode)}">查看</span>
+                    <span class="action-link" data-biz-act="edit" data-biz-code="${escAttr(r.businessCode)}">编辑</span>
+                    <span class="action-link text-danger" data-biz-act="delete" data-biz-code="${escAttr(r.businessCode)}">删除</span>
                   </td>
                 </tr>`).join("") : `<tr><td colspan="${fields.length+3}"><div class="empty-state">暂无业务数据</div></td></tr>`}</tbody>
               </table>
@@ -1260,6 +1266,7 @@ export async function initWmsPrintTemplateApp() {
           const selectedData = rows.filter(r => selectedBusinessRows.has(String(r.id))).map(r => ({ _id: r.id, ...r.fields }));
           openPrintModal(null, selectedData);
         };
+        document.getElementById("bizCreateBtn").onclick = () => openBusinessDataFormModal("create");
         const bizCheckAll = document.getElementById("bizCheckAll");
         if (bizCheckAll) {
           bizCheckAll.checked = rows.length > 0 && rows.every(r => selectedBusinessRows.has(String(r.id)));
@@ -1282,8 +1289,10 @@ export async function initWmsPrintTemplateApp() {
           };
         });
         document.querySelectorAll("[data-biz-act]").forEach(el => {
-          el.onclick = () => {
+          el.onclick = async () => {
             if (el.dataset.bizAct === "view") openBizDataDetailModal(el.dataset.bizCode);
+            if (el.dataset.bizAct === "edit") openBusinessDataFormModal("edit", el.dataset.bizCode);
+            if (el.dataset.bizAct === "delete") await deleteBusinessDataByCode(el.dataset.bizCode);
           };
         });
         document.querySelectorAll("[data-biz-page]").forEach(btn => {
@@ -1328,6 +1337,98 @@ export async function initWmsPrintTemplateApp() {
             </div>`;
         } catch (err) {
           document.getElementById("genericModalBody").innerHTML = `<div class="empty-state">加载失败：${escHtml(err.message || "请求失败")}</div>`;
+        }
+      }
+
+      async function openBusinessDataFormModal(mode, bizCode = "") {
+        const type = businessDataFilters.type;
+        const fields = FIELD_DICT[type] || [];
+        const isEdit = mode === "edit";
+        let values = {};
+        if (isEdit) {
+          document.getElementById("genericModalTitle").textContent = "编辑业务数据";
+          document.getElementById("genericModalBody").innerHTML = `<div class="empty-state">正在加载业务数据...</div>`;
+          document.getElementById("genericModalFoot").innerHTML = `<button class="btn btn-primary-wms" data-bs-dismiss="modal">关闭</button>`;
+          genericModal.show();
+          try {
+            const detail = await apiGetBusinessDataDetail(type, bizCode);
+            values = detail.fields || {};
+          } catch (err) {
+            document.getElementById("genericModalBody").innerHTML = `<div class="empty-state">加载失败：${escHtml(err.message || "请求失败")}</div>`;
+            return;
+          }
+        }
+
+        document.getElementById("genericModalTitle").textContent = isEdit ? "编辑业务数据" : "新增业务数据";
+        document.getElementById("genericModalBody").innerHTML = `
+          <div class="form-grid">
+            ${fields.map(field => renderBusinessFieldInput(field, values[field.code])).join("")}
+          </div>`;
+        document.getElementById("genericModalFoot").innerHTML = `
+          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-primary-wms" id="saveBusinessDataBtn">${isEdit ? "保存" : "新增"}</button>`;
+        genericModal.show();
+
+        document.getElementById("saveBusinessDataBtn").onclick = async () => {
+          const payload = readBusinessForm(fields);
+          if (!payload) return;
+          try {
+            if (isEdit) await apiUpdateBusinessData(type, bizCode, payload);
+            else await apiCreateBusinessData(type, payload);
+            genericModal.hide();
+            selectedBusinessRows.clear();
+            businessDataFilters.page = 1;
+            await renderBusiness();
+            toast(isEdit ? "业务数据已保存" : "业务数据已新增");
+          } catch (err) {
+            toast(`${isEdit ? "保存" : "新增"}失败：${err.message}`);
+          }
+        };
+      }
+
+      function renderBusinessFieldInput(field, value = "") {
+        const required = field.required ? `<span style="color:#ef4444">*</span>` : "";
+        if (field.code === "directionMark") {
+          return `<div class="field">
+            <label class="form-label">${escHtml(field.name)} ${required}</label>
+            <select class="form-select" data-biz-field="${escAttr(field.code)}">
+              <option value="" ${!value ? "selected" : ""}>空</option>
+              <option value="向上" ${value === "向上" ? "selected" : ""}>向上</option>
+              <option value="向下" ${value === "向下" ? "selected" : ""}>向下</option>
+            </select>
+          </div>`;
+        }
+        return `<div class="field">
+          <label class="form-label">${escHtml(field.name)} ${required}</label>
+          <input class="form-control" data-biz-field="${escAttr(field.code)}" value="${escAttr(value || "")}" placeholder="${escAttr(field.example || field.name)}">
+        </div>`;
+      }
+
+      function readBusinessForm(fields) {
+        const payload = {};
+        for (const field of fields) {
+          const input = document.querySelector(`[data-biz-field="${CSS.escape(field.code)}"]`);
+          const value = input ? String(input.value || "").trim() : "";
+          if (field.required && !value) {
+            toast(`${field.name}必填`);
+            input?.focus();
+            return null;
+          }
+          payload[field.code] = value;
+        }
+        return payload;
+      }
+
+      async function deleteBusinessDataByCode(bizCode) {
+        const type = businessDataFilters.type;
+        if (!confirm(`确认删除业务数据 ${bizCode}？`)) return;
+        try {
+          await apiDeleteBusinessData(type, bizCode);
+          selectedBusinessRows.delete(`${type}:${bizCode}`);
+          await renderBusiness();
+          toast("业务数据已删除");
+        } catch (err) {
+          toast(`删除失败：${err.message}`);
         }
       }
 
