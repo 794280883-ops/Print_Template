@@ -1212,8 +1212,8 @@ export async function initWmsPrintTemplateApp() {
           <div class="card-panel">
             <div class="section-head">
               <div class="toolbar-actions">
-                <button class="btn btn-primary-wms" id="bizCreateBtn">新增</button>
                 <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
+                <button class="btn btn-primary-wms" id="bizCreateBtn">新增</button>
               </div>
               <div>
                 <span class="section-meta">${loading ? "加载中..." : `共 ${total} 条`}</span>
