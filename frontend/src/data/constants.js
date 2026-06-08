@@ -36,7 +36,7 @@ export const FIELD_DICT = {
   ],
   PRODUCT: [
     { code: "productCode", name: "商品编码", type: "string", example: "SKU-10001", required: true, desc: "商品编码" },
-    { code: "customerProductCode", name: "客户商品编码", type: "string", example: "CUST-SKU-10001", required: false, desc: "客户商品编码" },
+    { code: "customerProductCode", name: "商品条码", type: "string", example: "CUST-SKU-10001", required: false, desc: "商品条码" },
   ],
 };
 

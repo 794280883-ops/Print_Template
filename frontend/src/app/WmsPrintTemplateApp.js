@@ -24,10 +24,11 @@ import {
 import {
   listBusinessData as apiListBusinessData,
   getBusinessDataDetail as apiGetBusinessDataDetail,
-  listWarehouses as apiListWarehouses,
   createBusinessData as apiCreateBusinessData,
   updateBusinessData as apiUpdateBusinessData,
   deleteBusinessData as apiDeleteBusinessData,
+  downloadImportTemplate as apiDownloadImportTemplate,
+  importBusinessData as apiImportBusinessData,
 } from '../api/businessDataApi.js';
 import { sampleByType, fieldExists } from '../services/templateDslService.js';
 import { getPrintableTemplate, normalizePrintRotation } from '../services/printRotationService.js';
@@ -65,8 +66,7 @@ export async function initWmsPrintTemplateApp() {
       let selectedBusinessRows = new Set();
       let fieldPreviewValues = {};
       let businessDataState = { rows: [], total: 0 };
-      let businessDataFilters = { type: "LOCATION", keyword: "", warehouseCode: "", page: 1, pageSize: 20 };
-      let businessWarehouses = [];
+      let businessDataFilters = { type: "LOCATION", keyword: "", page: 1, pageSize: 20, sortDir: "ASC" };
 
       // ── Helpers ──
       function uid(p) { return `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`; }
@@ -1145,6 +1145,13 @@ export async function initWmsPrintTemplateApp() {
         return "";
       }
 
+      function businessCodeLabelByType(type) {
+        if (type === "LOCATION") return "库位编码";
+        if (type === "CONTAINER") return "容器编码";
+        if (type === "PRODUCT") return "商品编码";
+        return "编码";
+      }
+
       function renderBusiness() { return renderBusinessData(); }
 
       async function renderBusinessData() {
@@ -1154,17 +1161,17 @@ export async function initWmsPrintTemplateApp() {
 
         root.innerHTML = renderBusinessDataHtml({ type, fields, rows: [], total: 0, loading: true, error: "" });
         try {
-          const [result, warehouses] = await Promise.all([
-            apiListBusinessData(type, {
-              keyword: businessDataFilters.keyword,
-              warehouseCode: businessDataFilters.warehouseCode,
-              page: businessDataFilters.page,
-              pageSize: businessDataFilters.pageSize,
-            }),
-            apiListWarehouses({ bizType: type }),
-          ]);
+          const searchParams = {
+            keyword: businessDataFilters.keyword,
+            page: businessDataFilters.page,
+            pageSize: businessDataFilters.pageSize,
+          };
+          if (businessDataFilters.sortDir) {
+            searchParams.sortField = "businessCode";
+            searchParams.sortDir = businessDataFilters.sortDir;
+          }
+          const result = await apiListBusinessData(type, searchParams);
           businessDataState = result || { rows: [], total: 0 };
-          businessWarehouses = warehouses || [];
         } catch (err) {
           businessDataState = { rows: [], total: 0 };
           root.innerHTML = renderBusinessDataHtml({ type, fields, rows: [], total: 0, loading: false, error: err.message || "加载业务数据失败" });
@@ -1182,6 +1189,12 @@ export async function initWmsPrintTemplateApp() {
       function renderBusinessDataHtml({ type, fields, rows, total, loading, error }) {
         const totalPages = Math.max(1, Math.ceil(total / businessDataFilters.pageSize));
         const currentPage = businessDataFilters.page;
+        const codeKey = businessCodeKeyByType(type);
+        const displayFields = fields.filter(f => f.code !== codeKey);
+        const colSpan = displayFields.length + 3;
+        const sortDir = businessDataFilters.sortDir;
+        const sortArrow = sortDir === "ASC" ? " ▲" : sortDir === "DESC" ? " ▼" : "";
+        const codeLabel = businessCodeLabelByType(type);
         return `
           <div class="card-panel filter-panel">
             <div class="panel-body">
@@ -1196,12 +1209,6 @@ export async function initWmsPrintTemplateApp() {
                 <div class="col-md-3">
                   <input class="form-control" id="bizKeyword" placeholder="搜索编码..." value="${escAttr(businessDataFilters.keyword)}">
                 </div>
-                <div class="col-md-3">
-                  <select class="form-select" id="bizWarehouse">
-                    <option value="">全部仓库</option>
-                    ${businessWarehouses.map(w=>`<option value="${escAttr(w.warehouseCode)}" ${businessDataFilters.warehouseCode===w.warehouseCode?"selected":""}>${escHtml(w.warehouseName || w.warehouseCode)}</option>`).join("")}
-                  </select>
-                </div>
                 <div class="col-auto">
                   <button class="btn btn-primary-wms" id="bizQueryBtn">查询</button>
                   <button class="btn btn-secondary-wms" id="bizResetBtn">重置</button>
@@ -1213,6 +1220,7 @@ export async function initWmsPrintTemplateApp() {
             <div class="section-head">
               <div class="toolbar-actions">
                 <button class="btn btn-primary-wms" id="bizCreateBtn">新增</button>
+                <button class="btn btn-light-wms" id="bizImportBtn">导入</button>
                 <button class="btn btn-light-wms" id="templatePrintBtn">模板打印</button>
               </div>
               <div>
@@ -1223,18 +1231,20 @@ export async function initWmsPrintTemplateApp() {
               <table class="table align-middle">
                 <thead><tr>
                   <th class="selection-cell"><input id="bizCheckAll" type="checkbox"></th>
-                  ${["编码", ...fields.map(f=>f.name), "操作"].map(h=>`<th class="text-start">${h}</th>`).join("")}
+                  <th class="text-start sortable-th" id="bizSortCode" style="cursor:pointer;user-select:none">${codeLabel}${sortArrow}</th>
+                  ${displayFields.map(f=>`<th class="text-start">${f.name}</th>`).join("")}
+                  <th class="text-start">操作</th>
                 </tr></thead>
-                <tbody>${loading ? `<tr><td colspan="${fields.length+3}"><div class="empty-state">正在加载业务数据...</div></td></tr>` : error ? `<tr><td colspan="${fields.length+3}"><div class="empty-state">加载失败：${escHtml(error)}</div></td></tr>` : rows.length ? rows.map(r=>`<tr>
+                <tbody>${loading ? `<tr><td colspan="${colSpan}"><div class="empty-state">正在加载业务数据...</div></td></tr>` : error ? `<tr><td colspan="${colSpan}"><div class="empty-state">加载失败：${escHtml(error)}</div></td></tr>` : rows.length ? rows.map(r=>`<tr>
                   <td class="selection-cell"><input class="bizRowCheck" type="checkbox" value="${r.id}" ${selectedBusinessRows.has(String(r.id))?"checked":""}></td>
                   <td class="text-start" style="font-weight:600"><span class="text-link action-link" data-biz-act="view" data-biz-code="${escAttr(r.businessCode)}">${escHtml(r.businessCode)}</span></td>
-                  ${fields.map(f=>`<td class="text-start">${escHtml(r.fields[f.code] ?? "-")}</td>`).join("")}
+                  ${displayFields.map(f=>`<td class="text-start">${escHtml(r.fields[f.code] ?? "-")}</td>`).join("")}
                   <td class="text-start">
                     <span class="action-link" data-biz-act="view" data-biz-code="${escAttr(r.businessCode)}">查看</span>
                     <span class="action-link" data-biz-act="edit" data-biz-code="${escAttr(r.businessCode)}">编辑</span>
                     <span class="action-link text-danger" data-biz-act="delete" data-biz-code="${escAttr(r.businessCode)}">删除</span>
                   </td>
-                </tr>`).join("") : `<tr><td colspan="${fields.length+3}"><div class="empty-state">暂无业务数据</div></td></tr>`}</tbody>
+                </tr>`).join("") : `<tr><td colspan="${colSpan}"><div class="empty-state">暂无业务数据</div></td></tr>`}</tbody>
               </table>
             </div>
             ${loading || error ? "" : renderBusinessPagination(currentPage, totalPages, total)}
@@ -1244,7 +1254,7 @@ export async function initWmsPrintTemplateApp() {
       function bindBusinessDataEvents(rows, totalPages) {
         document.querySelectorAll("[data-biz-tab]").forEach(tab => {
           tab.onclick = () => {
-            businessDataFilters = { type: tab.dataset.bizTab, keyword: "", warehouseCode: "", page: 1, pageSize: 20 };
+            businessDataFilters = { type: tab.dataset.bizTab, keyword: "", page: 1, pageSize: 20, sortDir: "ASC" };
             businessTab = tab.dataset.bizTab;
             selectedBusinessRows.clear();
             renderBusiness();
@@ -1252,21 +1262,31 @@ export async function initWmsPrintTemplateApp() {
         });
         document.getElementById("bizQueryBtn").onclick = () => {
           businessDataFilters.keyword = document.getElementById("bizKeyword").value.trim();
-          businessDataFilters.warehouseCode = document.getElementById("bizWarehouse").value;
           businessDataFilters.page = 1;
           renderBusiness();
         };
         document.getElementById("bizResetBtn").onclick = () => {
-          businessDataFilters = { type: businessDataFilters.type, keyword: "", warehouseCode: "", page: 1, pageSize: 20 };
+          businessDataFilters = { type: businessDataFilters.type, keyword: "", page: 1, pageSize: 20, sortDir: "ASC" };
           renderBusiness();
         };
         document.getElementById("bizKeyword").onkeydown = e => { if (e.key==="Enter") document.getElementById("bizQueryBtn").click(); };
+
+        // 编码列排序切换：ASC → DESC → ASC
+        const sortTh = document.getElementById("bizSortCode");
+        if (sortTh) {
+          sortTh.onclick = () => {
+            businessDataFilters.sortDir = businessDataFilters.sortDir === "ASC" ? "DESC" : "ASC";
+            businessDataFilters.page = 1;
+            renderBusiness();
+          };
+        }
         document.getElementById("templatePrintBtn").onclick = () => {
           if (selectedBusinessRows.size === 0) return toast("请先勾选要打印的业务数据");
           const selectedData = rows.filter(r => selectedBusinessRows.has(String(r.id))).map(r => ({ _id: r.id, ...r.fields }));
           openPrintModal(null, selectedData);
         };
         document.getElementById("bizCreateBtn").onclick = () => openBusinessDataFormModal("create");
+        document.getElementById("bizImportBtn").onclick = () => openImportModal();
         const bizCheckAll = document.getElementById("bizCheckAll");
         if (bizCheckAll) {
           bizCheckAll.checked = rows.length > 0 && rows.every(r => selectedBusinessRows.has(String(r.id)));
@@ -1301,24 +1321,61 @@ export async function initWmsPrintTemplateApp() {
             if (p >= 1 && p <= totalPages) { businessDataFilters.page = p; renderBusiness(); }
           };
         });
+
+        // 每页条数
+        const bizPageSizeInput = document.getElementById("bizPageSizeInput");
+        const bizPageSizeApplyBtn = document.getElementById("bizPageSizeApplyBtn");
+        if (bizPageSizeInput && bizPageSizeApplyBtn) {
+          const applyBizPageSize = () => {
+            let v = parseInt(bizPageSizeInput.value, 10);
+            if (isNaN(v) || v < 1) v = 1;
+            if (v > 200) v = 200;
+            bizPageSizeInput.value = v;
+            businessDataFilters.pageSize = v;
+            businessDataFilters.page = 1;
+            renderBusiness();
+          };
+          bizPageSizeApplyBtn.onclick = applyBizPageSize;
+          bizPageSizeInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); applyBizPageSize(); }
+          });
+          bizPageSizeInput.addEventListener("blur", () => {
+            let v = parseInt(bizPageSizeInput.value, 10);
+            if (isNaN(v) || v < 1) v = businessDataFilters.pageSize;
+            bizPageSizeInput.value = v;
+          });
+        }
       }
 
       function renderBusinessPagination(page, totalPages, total) {
-        if (totalPages <= 1) return "";
-        const pages = [];
-        for (let i = Math.max(1, page-2); i <= Math.min(totalPages, page+2); i++) pages.push(i);
-        if (pages[0] > 1) { pages.unshift(1); if (pages[1] > 2) pages.splice(1, 0, "..."); }
-        if (pages[pages.length-1] < totalPages) { if (pages[pages.length-1] < totalPages-1) pages.push("..."); pages.push(totalPages); }
-        return `<div class="pagination-bar"><div class="pagination-controls">
-          <button class="pagination-btn" data-biz-page="${page-1}" ${page<=1?"disabled":""}>上一页</button>
-          ${pages.map(p=>p==="..."?`<span class="pagination-ellipsis">…</span>`:`<button class="pagination-btn ${p===page?"active":""}" data-biz-page="${p}">${p}</button>`).join("")}
-          <button class="pagination-btn" data-biz-page="${page+1}" ${page>=totalPages?"disabled":""}>下一页</button>
-        </div><span class="section-meta">共 ${total} 条</span></div>`;
+        let pageLinks = "";
+        for (let i = 1; i <= totalPages; i++) {
+          if (totalPages <= 7 || i === 1 || i === totalPages || (i >= page - 1 && i <= page + 1)) {
+            pageLinks += `<button class="pagination-btn ${i === page ? "active" : ""}" data-biz-page="${i}">${i}</button>`;
+          } else if (i === page - 2 || i === page + 2) {
+            pageLinks += `<span class="pagination-ellipsis">...</span>`;
+          }
+        }
+        return `
+          <div class="pagination-bar">
+            <div class="pagination-info">显示第 ${(page-1)*businessDataFilters.pageSize + 1}-${Math.min(page*businessDataFilters.pageSize, total)} 条，共 ${total} 条</div>
+            <div class="pagination-controls">
+              <button class="pagination-btn" data-biz-page="${page-1}" ${page<=1?"disabled":""}>上一页</button>
+              ${pageLinks}
+              <button class="pagination-btn" data-biz-page="${page+1}" ${page>=totalPages?"disabled":""}>下一页</button>
+              <span class="pagination-size-label">每页</span>
+              <input class="pagination-size-input" id="bizPageSizeInput" type="number" min="1" max="200" value="${businessDataFilters.pageSize}">
+              <span class="pagination-size-label">条</span>
+              <button class="pagination-btn" id="bizPageSizeApplyBtn">确定</button>
+            </div>
+          </div>`;
       }
 
       async function openBizDataDetailModal(bizCode) {
         const type = businessDataFilters.type;
         const fields = FIELD_DICT[type] || [];
+        const codeKey = businessCodeKeyByType(type);
+        const displayFields = fields.filter(f => f.code !== codeKey);
         document.getElementById("genericModalTitle").textContent = "业务数据详情";
         document.getElementById("genericModalBody").innerHTML = `<div class="empty-state">正在加载业务数据...</div>`;
         document.getElementById("genericModalFoot").innerHTML = `<button class="btn btn-primary-wms" data-bs-dismiss="modal">关闭</button>`;
@@ -1330,8 +1387,8 @@ export async function initWmsPrintTemplateApp() {
               <table class="table align-middle">
                 <tbody>
                   <tr><th class="text-start" style="width:160px">业务类型</th><td class="text-start">${TYPE_LABEL[type]||type}</td></tr>
-                  <tr><th class="text-start">业务编码</th><td class="text-start">${escHtml(detail.businessCode)}</td></tr>
-                  ${fields.map(f=>`<tr><th class="text-start">${escHtml(f.name)}</th><td class="text-start">${escHtml(detail.fields?.[f.code] ?? "-")}</td></tr>`).join("")}
+                  <tr><th class="text-start">${businessCodeLabelByType(type)}</th><td class="text-start">${escHtml(detail.businessCode)}</td></tr>
+                  ${displayFields.map(f=>`<tr><th class="text-start">${escHtml(f.name)}</th><td class="text-start">${escHtml(detail.fields?.[f.code] ?? "-")}</td></tr>`).join("")}
                 </tbody>
               </table>
             </div>`;
@@ -1362,12 +1419,21 @@ export async function initWmsPrintTemplateApp() {
         document.getElementById("genericModalTitle").textContent = isEdit ? "编辑业务数据" : "新增业务数据";
         document.getElementById("genericModalBody").innerHTML = `
           <div class="form-grid">
-            ${fields.map(field => renderBusinessFieldInput(field, values[field.code])).join("")}
+            ${fields.map(field => renderBusinessFieldInput(field, values[field.code], isEdit)).join("")}
           </div>`;
         document.getElementById("genericModalFoot").innerHTML = `
           <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
           <button class="btn btn-primary-wms" id="saveBusinessDataBtn">${isEdit ? "保存" : "新增"}</button>`;
         genericModal.show();
+
+        // 新增模式：等 modal 动画完成后聚焦编码字段，方便直接键入
+        if (!isEdit) {
+          const modalEl = document.getElementById("genericModal");
+          modalEl.addEventListener("shown.bs.modal", () => {
+            const firstInput = modalEl.querySelector("input[data-biz-field]");
+            if (firstInput) firstInput.focus();
+          }, { once: true });
+        }
 
         document.getElementById("saveBusinessDataBtn").onclick = async () => {
           const payload = readBusinessForm(fields);
@@ -1386,8 +1452,9 @@ export async function initWmsPrintTemplateApp() {
         };
       }
 
-      function renderBusinessFieldInput(field, value = "") {
+      function renderBusinessFieldInput(field, value = "", isEdit = true) {
         const required = field.required ? `<span style="color:#ef4444">*</span>` : "";
+        const placeholder = isEdit ? (field.example || field.name) : `请输入${field.name}`;
         if (field.code === "directionMark") {
           return `<div class="field">
             <label class="form-label">${escHtml(field.name)} ${required}</label>
@@ -1400,7 +1467,7 @@ export async function initWmsPrintTemplateApp() {
         }
         return `<div class="field">
           <label class="form-label">${escHtml(field.name)} ${required}</label>
-          <input class="form-control" data-biz-field="${escAttr(field.code)}" value="${escAttr(value || "")}" placeholder="${escAttr(field.example || field.name)}">
+          <input class="form-control" data-biz-field="${escAttr(field.code)}" value="${escAttr(value || "")}" placeholder="${escAttr(placeholder)}" autocomplete="off">
         </div>`;
       }
 
@@ -1432,6 +1499,104 @@ export async function initWmsPrintTemplateApp() {
         }
       }
 
+      function openImportModal() {
+        const type = businessDataFilters.type;
+        const label = businessCodeLabelByType(type);
+        let selectedFile = null;
+
+        document.getElementById("genericModalTitle").textContent = "导入业务数据";
+        document.getElementById("genericModalBody").innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-weight:600">业务类型：</span>
+              <span>${TYPE_LABEL[type]}</span>
+              <button class="btn btn-light-wms" id="downloadTemplateBtn">下载导入模板</button>
+            </div>
+            <div style="border:2px dashed #d1d5db;border-radius:8px;padding:32px;text-align:center" id="importDropZone">
+              <div style="font-size:32px;margin-bottom:8px">📁</div>
+              <div style="margin-bottom:8px;color:#6b7280">拖拽 .xlsx 文件到此处，或点击选择文件</div>
+              <input type="file" id="importFileInput" accept=".xlsx" style="display:none">
+              <button class="btn btn-secondary-wms" id="selectFileBtn">选择文件</button>
+              <div id="importFileName" style="margin-top:8px;color:#374151;font-weight:500"></div>
+            </div>
+            <div id="importResult" style="display:none"></div>
+          </div>`;
+        document.getElementById("genericModalFoot").innerHTML = `
+          <button class="btn btn-secondary-wms" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-primary-wms" id="confirmImportBtn" disabled>确认导入</button>`;
+        genericModal.show();
+
+        // 下载模板
+        document.getElementById("downloadTemplateBtn").onclick = () => apiDownloadImportTemplate(type);
+
+        // 文件选择
+        const fileInput = document.getElementById("importFileInput");
+        const dropZone = document.getElementById("importDropZone");
+        const fileNameEl = document.getElementById("importFileName");
+        const confirmBtn = document.getElementById("confirmImportBtn");
+
+        document.getElementById("selectFileBtn").onclick = () => fileInput.click();
+
+        fileInput.onchange = () => {
+          if (fileInput.files.length > 0) {
+            selectedFile = fileInput.files[0];
+            fileNameEl.textContent = `已选择：${selectedFile.name}`;
+            confirmBtn.disabled = false;
+          }
+        };
+
+        // 拖拽支持
+        dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.style.borderColor = "#3b82f6"; });
+        dropZone.addEventListener("dragleave", () => { dropZone.style.borderColor = "#d1d5db"; });
+        dropZone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dropZone.style.borderColor = "#d1d5db";
+          if (e.dataTransfer.files.length > 0) {
+            selectedFile = e.dataTransfer.files[0];
+            fileNameEl.textContent = `已选择：${selectedFile.name}`;
+            confirmBtn.disabled = false;
+          }
+        });
+        dropZone.onclick = (e) => { if (e.target === dropZone) fileInput.click(); };
+
+        // 确认导入
+        document.getElementById("confirmImportBtn").onclick = async () => {
+          if (!selectedFile) return toast("请先选择文件");
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = "导入中...";
+          const resultEl = document.getElementById("importResult");
+          try {
+            const result = await apiImportBusinessData(type, selectedFile);
+            const data = result.data || result;
+            resultEl.style.display = "block";
+            resultEl.innerHTML = `
+              <div class="card-panel" style="box-shadow:none;border:1px solid #e5e7eb">
+                <div style="padding:16px">
+                  <div style="font-weight:600;margin-bottom:8px">导入结果</div>
+                  <div>总计 ${data.total} 条，成功 <span style="color:#059669;font-weight:600">${data.success}</span> 条</div>
+                  ${data.errors && data.errors.length ? `<div style="margin-top:8px;color:#dc2626">失败 ${data.errors.length} 条：${data.errors.map(e => `${escHtml(e.bizCode || e.row+'行')}: ${escHtml(e.message)}`).join("；")}</div>` : ""}
+                </div>
+              </div>`;
+            if (data.success > 0) {
+              selectedBusinessRows.clear();
+              businessDataFilters.page = 1;
+              await renderBusiness();
+              toast(`成功导入 ${data.success} 条`);
+            }
+            confirmBtn.textContent = "确认导入";
+            confirmBtn.disabled = false;
+            selectedFile = null;
+            document.getElementById("importFileName").textContent = "";
+            fileInput.value = "";
+          } catch (err) {
+            resultEl.style.display = "block";
+            resultEl.innerHTML = `<div style="color:#dc2626">导入失败：${escHtml(err.message || "请求失败")}</div>`;
+            confirmBtn.textContent = "确认导入";
+            confirmBtn.disabled = false;
+          }
+        };
+      }
+
       async function openPrintModal(template = null, preselectedData = null) {
         const printType = template?.templateType || businessTab;
         // Only enabled templates can be printed.
@@ -1457,7 +1622,8 @@ export async function initWmsPrintTemplateApp() {
           } catch { /* fallback to empty */ }
         }
 
-        const fieldKeys = data.length ? Object.keys(data[0]).filter(k => k !== "_id") : [];
+        const codeKey = businessCodeKeyByType(activeTemplate.templateType);
+        const fieldKeys = data.length ? Object.keys(data[0]).filter(k => k !== "_id" && k !== codeKey) : [];
         // Pre-check all rows
         let printSelectedRows = new Set(data.map((_, i) => String(i)));
 
@@ -1581,22 +1747,6 @@ export async function initWmsPrintTemplateApp() {
       }
 
       // ── Init ──
-      function initTime() {
-        const updateTime = ()=>{
-          const d=new Date();
-          const pad=n=>String(n).padStart(2,"0");
-          document.getElementById("timeDisplay").textContent = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-        };
-        updateTime(); setInterval(updateTime, 1000);
-      }
-
-      function initLangSwitcher() {
-        const ls = document.getElementById("languageSwitcher");
-        if (ls) {
-          document.documentElement.lang = ls.value;
-          ls.addEventListener("change", ()=>{ document.documentElement.lang = ls.value; });
-        }
-      }
 
       // ── Tab clicks ──
       document.querySelectorAll("#tabbarTabs .nav-tab").forEach(tab=>{
@@ -1622,7 +1772,5 @@ export async function initWmsPrintTemplateApp() {
       });
 
       // ── STARTUP ──
-      initTime();
-      initLangSwitcher();
       await hydrateState();
 }

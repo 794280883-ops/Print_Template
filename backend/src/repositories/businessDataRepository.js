@@ -14,9 +14,7 @@ export async function search(mapping, query = {}) {
   const where = buildWhere(mapping, query);
   const select = buildSelect(mapping);
   const table = quoteIdentifier(mapping.table);
-  const orderSql = mapping.updatedAtColumn
-    ? `${quoteIdentifier(mapping.updatedAtColumn)} DESC, ${quoteIdentifier(mapping.bizCodeColumn)} DESC`
-    : `${quoteIdentifier(mapping.bizCodeColumn)} DESC`;
+  const orderSql = buildOrder(mapping, query);
 
   const [[{ total }]] = await pool.query(
     `SELECT COUNT(*) AS total FROM ${table} ${where.sql}`,
@@ -145,6 +143,23 @@ function buildSelect(mapping) {
     params.push(...expr.params);
   }
   return { sql: parts.join(", "), params };
+}
+
+function buildOrder(mapping, query) {
+  const defaultOrder = mapping.updatedAtColumn
+    ? `${quoteIdentifier(mapping.updatedAtColumn)} DESC, ${quoteIdentifier(mapping.bizCodeColumn)} DESC`
+    : `${quoteIdentifier(mapping.bizCodeColumn)} DESC`;
+
+  if (!query.sortField || !query.sortDir) return defaultOrder;
+
+  const dir = query.sortDir.toUpperCase() === "ASC" ? "ASC" : "DESC";
+  if (query.sortField === "businessCode") {
+    return `${quoteIdentifier(mapping.bizCodeColumn)} ${dir}`;
+  }
+  if (query.sortField === "updatedAt") {
+    return `${quoteIdentifier(mapping.updatedAtColumn)} ${dir}`;
+  }
+  return defaultOrder;
 }
 
 function buildWhere(mapping, query) {

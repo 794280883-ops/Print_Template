@@ -59,7 +59,7 @@ export const businessDataMappings = {
     ],
     fields: [
       { code: "productCode", name: "商品编码", source: "column", column: "sku", required: true },
-      { code: "customerProductCode", name: "客户商品编码", source: "column", column: "customer_code" },
+      { code: "customerProductCode", name: "商品条码", source: "column", column: "customer_code" },
     ],
   },
 };
