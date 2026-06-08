@@ -4,7 +4,7 @@ set -euo pipefail
 SERVER_HOST="${SERVER_HOST:-47.113.118.74}"
 SERVER_USER="${SERVER_USER:-root}"
 SERVER_DIR="${SERVER_DIR:-/opt/wms-print-template-center}"
-SSH_KEY="${SSH_KEY:-/tmp/wms_deploy_key}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/wms_deploy_key}"
 BRANCH="${BRANCH:-main}"
 
 if [ ! -f "$SSH_KEY" ]; then
