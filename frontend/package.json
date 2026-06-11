@@ -9,9 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "bootstrap": "5.3.3"
+    "@ant-design/icons-vue": "^7.0.1",
+    "ant-design-vue": "^4.2.6",
+    "bootstrap": "5.3.3",
+    "pinia": "^2.3.1",
+    "vue": "^3.5.38",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
     "vite": "^7.2.4"
   }
 }

@@ -6,66 +6,7 @@
     <title>WMS 打印模板中心</title>
   </head>
   <body>
-      <!-- ════ TABBAR ════ -->
-      <div class="tabbar">
-        <div class="tabbar-tabs" id="tabbarTabs">
-          <a class="nav-tab active" data-view="templates">模板列表</a>
-          <a class="nav-tab" data-view="designer">模板设计器</a>
-          <a class="nav-tab" data-view="fields">模版字段</a>
-          <a class="nav-tab" data-view="business">业务数据</a>
-        </div>
-      </div>
-    
-      <!-- ════ MAIN CONTENT ════ -->
-      <main class="page-shell">
-    
-        <!-- ── View: 模板列表 ── -->
-        <section class="view-section active" id="view-templates"></section>
-    
-        <!-- ── View: 模板设计器 ── -->
-        <section class="view-section" id="view-designer"></section>
-    
-    
-        <!-- ── View: 模版字段 ── -->
-        <section class="view-section" id="view-fields"></section>
-    
-
-        <!-- ── View: 业务数据 ── -->
-        <section class="view-section" id="view-business"></section>
-
-      </main>
-    
-      <!-- ════ MODALS ════ -->
-      <div class="modal fade" id="genericModal" tabindex="-1" data-bs-backdrop="static">
-        <div class="modal-dialog modal-lg">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title" id="genericModalTitle"></h5>
-              <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="genericModalBody"></div>
-            <div class="modal-footer" id="genericModalFoot"></div>
-          </div>
-        </div>
-      </div>
-    
-      <!-- Large modal for preview -->
-      <div class="modal fade" id="largeModal" tabindex="-1" data-bs-backdrop="static">
-        <div class="modal-dialog modal-xl">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title" id="largeModalTitle"></h5>
-              <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="largeModalBody"></div>
-            <div class="modal-footer" id="largeModalFoot"></div>
-          </div>
-        </div>
-      </div>
-    
-    
-      <!-- ════ TOAST HOST ════ -->
-      <div class="toast-host" id="toastHost"></div>
+    <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
