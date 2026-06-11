@@ -1,142 +1,116 @@
 # WMS 打印模板中心
 
-第一阶段已将单文件 HTML 原型迁移为 Vite 前端工程。第二阶段已新增 Node.js + Express 后端、MySQL 连接、初始化 SQL、种子数据和 REST API。第三阶段已将前端主流程切换为后端 API。第四阶段已补齐 Docker Compose、Nginx 和环境变量示例。
+可视化打印模板设计与管理平台，支持库位/容器/商品三种模板类型的拖拽式设计、字段动态绑定、一键发布与打印。
 
-## 当前范围
+## 核心功能
 
-- 已创建 `frontend` 工程。
-- 已抽离样式到 `frontend/src/styles/wms.css`。
-- 已拆出 mock 数据、DSL 服务、校验服务、AI mock 服务、请求封装和模板 API。
-- 已保留模板列表、设计器、标准模板库、字段字典、业务打印模拟、打印日志等原型能力。
-- 尚未实现生产鉴权、日志归档、备份和自动化测试。
+- **模板管理**：创建、编辑、复制、发布、停用、删除、导入/导出
+- **可视化设计器**：拖拽组件（文本/横线/矩形/一维码/二维码/复选框）、属性编辑、字段绑定、画布实时预览
+- **字段字典**：库位/容器/商品三类型树形分类，展示名称与存储编码映射
+- **业务数据管理**：测试库接入、Excel 导入、搜索与 CRUD
+- **打印功能**：预览、提交打印、打印日志追溯
+- **操作日志**：模板设计、发布等关键操作全程记录
 
-## 本地启动
+## 技术栈
 
-前端：
+| 层 | 技术选型 |
+|---|---|
+| 前端 | Vite + Vanilla JavaScript + Bootstrap 5 |
+| 后端 | Node.js + Express (REST API) |
+| 数据库 | MySQL 8.4 |
+| 容器化 | Docker + Docker Compose |
+| 网关 | Nginx（反向代理 + 静态资源） |
+| 部署 | 阿里云 ECS + Shell 部署脚本 |
 
-```bash
-cd /Users/l/Documents/Codex/wms-print-template-center/frontend
-npm install
-npm run dev
-```
+## 本地开发
 
-构建检查：
-
-```bash
-npm run build
-```
-
-后端：
+### 1. 启动 MySQL
 
 ```bash
-cd /Users/l/Documents/Codex/wms-print-template-center/backend
-cp .env.example .env
-npm install
-npm run migrate
-npm run dev
+# 启动 Docker Desktop（如果未运行）
+open -a "Docker Desktop"
+
+# 启动已有 MySQL 容器
+docker start mysql
 ```
 
-默认后端地址为 `http://127.0.0.1:3001`，健康检查为 `GET /api/v1/health`。
-
-前端 API 默认请求 `/api/v1`，本地 Vite 会代理到 `http://127.0.0.1:3001`。如需指定后端地址，可设置：
-
-```bash
-VITE_API_BASE_URL=http://127.0.0.1:3001/api/v1 npm run dev
-```
-
-## 后端 API
-
-统一响应格式：
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {}
-}
-```
-
-已实现接口：
-
-```text
-GET    /api/v1/health
-GET    /api/v1/templates
-GET    /api/v1/templates/:id
-POST   /api/v1/templates
-PUT    /api/v1/templates/:id
-POST   /api/v1/templates/:id/publish
-POST   /api/v1/templates/:id/disable
-POST   /api/v1/templates/:id/copy
-POST   /api/v1/templates/import
-GET    /api/v1/templates/:id/export
-GET    /api/v1/template/fields/:templateType
-POST   /api/v1/print/preview
-POST   /api/v1/print/submit
-GET    /api/v1/print/logs
-POST   /api/v1/ai/templates/generate
-```
-
-## MySQL 初始化
-
-`backend/migrations/001_init.sql` 会创建以下表，并写入原型中的 3 个模板、LOCATION/CONTAINER 字段字典和仓库种子数据：
-
-```text
-print_template
-print_template_element
-print_template_warehouse
-print_field_dict
-print_log
-operation_log
-```
-
-执行：
-
-```bash
-cd /Users/l/Documents/Codex/wms-print-template-center/backend
-cp .env.example .env
-npm run migrate
-```
-
-## Docker 启动
+### 2. 启动项目
 
 ```bash
 cd /Users/l/Documents/Codex/wms-print-template-center
-cp .env.example .env
-docker compose up -d --build
+./scripts/dev-local.sh
 ```
 
-默认访问地址：
+脚本会自动执行数据库迁移并启动前后端服务。
 
-```text
-前端入口：http://127.0.0.1:8080
-后端健康检查：http://127.0.0.1:8080/api/v1/health
-MySQL：127.0.0.1:3306
+### 3. 访问
+
+```bash
+# 自动打开浏览器和 DataGrip
+open http://127.0.0.1:5173
+open -a "DataGrip" "jdbc:mysql://127.0.0.1:3306/wms_print_template"
 ```
 
-## 目录说明
+- 前端：http://127.0.0.1:5173
+- 后端健康检查：http://127.0.0.1:3001/api/v1/health
+
+## 服务器部署
+
+### 一键部署
+
+```bash
+./scripts/deploy-server.sh
+```
+
+脚本会自动连接阿里云服务器，拉取最新代码，构建并启动所有服务。
+
+### 公网访问
+
+- 地址：http://47.113.118.74
+- 健康检查：http://47.113.118.74/api/v1/health
+
+## 目录结构
 
 ```text
 wms-print-template-center/
-├── .env.example
+├── .env.example              # 环境变量示例
+├── .env.production.example   # 生产环境变量示例
+├── docker-compose.yml        # Docker 编排配置
 ├── README.md
-├── backend/
-│   ├── migrations/
-│   ├── scripts/
-│   └── src/
-├── docker-compose.yml
-└── frontend/
-    ├── index.html
-    ├── package.json
-    └── src/
-        ├── api/
-        ├── app/
-        ├── data/
-        ├── pages/
-        ├── services/
-        ├── styles/
-        └── main.js
+├── backend/                  # 后端服务
+│   ├── migrations/           # 数据库迁移脚本
+│   ├── scripts/              # 后端工具脚本
+│   └── src/                  # 源代码
+├── docs/                     # 项目文档
+├── frontend/                 # 前端工程
+│   ├── src/
+│   │   ├── api/              # API 封装
+│   │   ├── app/              # 主应用逻辑
+│   │   ├── data/             # 数据常量
+│   │   ├── pages/            # 页面模块
+│   │   ├── services/         # 业务服务
+│   │   └── styles/           # 样式文件
+│   └── index.html
+├── nginx/                    # Nginx 配置
+└── scripts/                  # 部署脚本
+    ├── check-before-push.sh  # 提交前检查
+    ├── deploy-server.sh      # 服务器部署
+    └── dev-local.sh          # 本地开发启动
 ```
 
-## 后续阶段
+## 文档
 
-下一阶段建议补充发布文档、鉴权、结构化日志、备份策略和自动化测试。
+- [本地开发指南](docs/本地开发指南.md)
+- [服务器部署指南](docs/服务器部署指南.md)
+- [接口文档](docs/接口文档.md)
+- [数据库设计](docs/数据库设计.md)
+- [项目交接说明](docs/项目交接说明.md)
+
+## 后续计划
+
+- 域名备案和 HTTPS
+- 登录鉴权和权限控制
+- 操作日志审计增强
+- 数据备份策略
+- 自动化测试
+- 打印模板版本管理
