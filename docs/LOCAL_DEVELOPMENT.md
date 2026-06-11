@@ -4,6 +4,20 @@
 
 ## 1. 启动 MySQL
 
+### 自动启动（推荐）
+
+运行以下命令自动启动 Docker Desktop 和 MySQL 容器：
+
+```bash
+# 启动 Docker Desktop（如果未运行）
+open -a "Docker Desktop"
+
+# 等待 Docker 就绪后启动已有 MySQL 容器
+docker start mysql
+```
+
+### 手动启动
+
 在 Docker Desktop 中启动已有 MySQL 容器。
 
 当前本机约定：
@@ -56,10 +70,11 @@ cd /Users/l/Documents/Codex/wms-print-template-center
 4. 启动前端 Vite 服务：http://127.0.0.1:5173
 ```
 
-访问本地页面：
+启动后自动打开浏览器和 DataGrip：
 
-```text
-http://127.0.0.1:5173
+```bash
+open http://127.0.0.1:5173
+open -a "DataGrip" "jdbc:mysql://127.0.0.1:3306/wms_print_template"
 ```
 
 健康检查：
