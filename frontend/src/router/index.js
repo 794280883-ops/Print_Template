@@ -26,13 +26,13 @@ const routes = [
   {
     path: '/fields',
     name: 'FieldDictionary',
-    meta: { permission: 'field:view', title: '模版字段', icon: 'DatabaseOutlined' },
+    meta: { permission: 'field:view', title: '模版字段', icon: 'DatabaseOutlined', menuGroup: '字段与数据' },
     component: () => import('../views/fields/FieldDictionary.vue'),
   },
   {
     path: '/business',
     name: 'BusinessData',
-    meta: { permission: 'business:view', title: '业务数据', icon: 'TableOutlined' },
+    meta: { permission: 'business:view', title: '业务数据', icon: 'TableOutlined', menuGroup: '字段与数据' },
     component: () => import('../views/business/BusinessData.vue'),
   },
   {
@@ -64,6 +64,31 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+});
+
+// -- 路由守卫 --
+import { usePermissionStore } from '../stores/permission.js';
+
+router.beforeEach((to, from, next) => {
+  // 放行登录页和 403
+  if (to.path === '/login' || to.path === '/403') {
+    return next();
+  }
+
+  const store = usePermissionStore();
+
+  // 未登录 -> 跳转登录
+  if (!store.hasUser) {
+    return next('/login');
+  }
+
+  // 无权限 -> 跳转 403
+  const requiredPermission = to.meta.permission;
+  if (requiredPermission && !store.hasPermission(requiredPermission)) {
+    return next('/403');
+  }
+
+  next();
 });
 
 export default router;

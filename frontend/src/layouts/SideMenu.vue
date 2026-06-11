@@ -1,6 +1,7 @@
 <template>
   <a-layout-sider
-    v-model:collapsed="collapsed"
+    :collapsed="collapsed"
+    @update:collapsed="val => emit('update:collapsed', val)"
     :trigger="null"
     collapsible
     :style="{ background: '#fff', borderRight: '1px solid #f0f0f0' }"
@@ -38,20 +39,32 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { usePermissionStore } from '../stores/permission.js';
+
+const props = defineProps({ collapsed: { type: Boolean, default: false } });
+const emit = defineEmits(['update:collapsed']);
 
 const router = useRouter();
 const route = useRoute();
+const permissionStore = usePermissionStore();
 
-const collapsed = ref(false);
+// 按权限过滤菜单路由
+const menuRoutes = computed(() =>
+  router.getRoutes().filter(r => {
+    if (r.meta.hidden) return false;
+    if (r.path === '/' || r.path === '/login' || r.path === '/403') return false;
+    const perm = r.meta.permission;
+    if (perm && !permissionStore.hasPermission(perm)) return false;
+    return true;
+  })
+);
 
-// Build menu groups from routes
-const menuRoutes = router.getRoutes().filter(r => !r.meta.hidden && r.path !== '/' && r.path !== '/login' && r.path !== '/403');
-
+// 按 menuGroup 分组
 const menuGroups = computed(() => {
   const groups = new Map();
-  for (const r of menuRoutes) {
+  for (const r of menuRoutes.value) {
     const group = r.meta.menuGroup || 'default';
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(r);
@@ -69,11 +82,12 @@ const menuGroups = computed(() => {
 
 const selectedKeys = computed(() => [route.path]);
 
-const openKeys = ref(
-  menuRoutes
-    .filter(r => r.meta.menuGroup && route.path.startsWith(r.path.split('/').slice(0, 3).join('/')))
-    .map(r => r.path)
-);
+// 根据当前路由的 menuGroup 计算展开的菜单组
+const openKeys = computed(() => {
+  const currentRoute = menuRoutes.value.find(r => r.path === route.path);
+  const group = currentRoute?.meta?.menuGroup;
+  return group ? [group] : [];
+});
 
 function handleMenuSelect({ key }) {
   router.push(key);

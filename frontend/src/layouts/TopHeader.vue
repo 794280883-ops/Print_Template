@@ -28,6 +28,7 @@
 
 <script setup>
 import { useRouter } from 'vue-router';
+import { usePermissionStore } from '../stores/permission.js';
 import {
   MenuFoldOutlined,
   UserOutlined,
@@ -38,15 +39,7 @@ import {
 defineEmits(['toggle-collapse']);
 const router = useRouter();
 
-// The permission store will be created in Task 3.
-// For now, use a minimal inline fallback.
-const store = {
-  user: null,
-  logout() {
-    // Will be replaced by real store in Task 3
-    router.push('/login');
-  },
-};
+const store = usePermissionStore();
 
 function handleUserMenu({ key }) {
   if (key === 'logout') {

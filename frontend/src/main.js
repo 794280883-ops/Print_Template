@@ -5,9 +5,11 @@ import 'ant-design-vue/dist/reset.css';
 import './styles/wms.css';
 import App from './App.vue';
 import router from './router/index.js';
+import permissionDirective from './directives/permission.js';
 
 const app = createApp(App);
 app.use(createPinia());
 app.use(router);
 app.use(Antd);
+app.directive('permission', permissionDirective);
 app.mount('#app');
