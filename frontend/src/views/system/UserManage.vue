@@ -61,8 +61,8 @@ function seedData() {
   const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   if (existing.length === 0) {
     existing.push({ id: 1, username: 'admin', nickname: '系统管理员', roles: ['admin'], status: 'enabled', createdAt: new Date().toISOString().slice(0, 16).replace('T', ' ') });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
   }
-  return existing;
 }
 function loadData() { users.value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
 function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(users.value)); }

@@ -10,34 +10,34 @@
           <a-button :disabled="!history.length" @click="undo"><UndoOutlined /></a-button>
           <a-button :disabled="!future.length" @click="redo"><RedoOutlined /></a-button>
         </a-button-group>
+        <a-input
+          id="templateName"
+          v-model:value="templateName"
+          placeholder="模板名称"
+          size="small"
+          style="width:180px"
+        />
         <span class="designer-size-editor">
           <span class="designer-size-label">宽</span>
-          <a-input-number v-model:value="templateWidth" :min="1" :step="0.5" size="small" style="width:62px" @change="onSizeChange" />
+          <a-input-number id="templateWidth" v-model:value="templateWidth" :min="1" :step="0.5" size="small" style="width:62px" @change="onSizeChange" />
           <span>×</span>
           <span class="designer-size-label">高</span>
-          <a-input-number v-model:value="templateHeight" :min="1" :step="0.5" size="small" style="width:62px" @change="onSizeChange" />
+          <a-input-number id="templateHeight" v-model:value="templateHeight" :min="1" :step="0.5" size="small" style="width:62px" @change="onSizeChange" />
           <span class="designer-unit-text">mm</span>
         </span>
       </div>
       <div class="toolbar-actions">
-        <a-button size="small" @click="zoomOut">-</a-button>
-        <span style="min-width:36px;text-align:center">{{ Math.round(zoom * 100) }}%</span>
-        <a-button size="small" @click="zoomIn">+</a-button>
-        <a-switch v-model:checked="showGrid" size="small" style="margin-left:8px" /> 网格
-        <a-button :loading="saving" type="primary" @click="handleSave" style="margin-left:8px">
+        <a-button :loading="saving" type="primary" @click="handleSave">
           <SaveOutlined /> 保存
         </a-button>
-        <a-button :disabled="!validation.canPublish" @click="handlePublish">
-          <SendOutlined /> 发布
-        </a-button>
-        <a-button @click="handlePreview">
+<a-button @click="handlePreview" style="margin-left:8px">
           <EyeOutlined /> 预览
         </a-button>
       </div>
     </div>
 
     <!-- Body -->
-    <div class="designer-body">
+    <div v-if="template" class="designer-body">
       <!-- Left Component Panel -->
       <aside class="toolbox">
         <div class="tool-section">
@@ -46,6 +46,7 @@
             <div v-for="comp in COMPONENTS" :key="comp.type + comp.label"
               class="component-btn" draggable="true"
               @dragstart="handleDragStart($event, comp)"
+              @click="addElementFromData(comp)"
             >
               <strong>{{ comp.icon }}</strong><span>{{ comp.label }}</span>
             </div>
@@ -58,7 +59,6 @@
             @dragstart="handleFieldDragStart($event, field)"
           >
             <span>{{ field.name }}</span>
-            <code>{{ field.code }}</code>
           </div>
         </div>
       </aside>
@@ -67,12 +67,10 @@
       <section class="canvas-shell">
         <div class="canvas-toolbar">
           <div class="toolbar-actions">
-            <a-button size="small" @click="copySelected">复制</a-button>
-            <a-button size="small" @click="pasteSelected">粘贴</a-button>
-            <a-button size="small" danger @click="deleteSelected">删除</a-button>
+            <a-switch id="gridToggle" v-model:checked="showGrid" size="small" /> 网格
           </div>
           <div class="toolbar-actions">
-            <a-select v-model:value="zoom" style="width:90px" size="small">
+            <a-select id="zoomSelect" v-model:value="zoom" style="width:90px" size="small">
               <a-select-option :value="0.75">75%</a-select-option>
               <a-select-option :value="1">100%</a-select-option>
               <a-select-option :value="1.25">125%</a-select-option>
@@ -103,7 +101,7 @@
               <!-- line/rect: no inner content -->
               <!-- resize handles -->
               <template v-if="selectedElementId === el.id">
-                <span v-for="h in ['nw','n','ne','e','se','s','sw','w']" :key="h"
+                <span v-for="h in (el.type === 'line' ? lineResizeHandles(el) : ['nw','n','ne','e','se','s','sw','w'])" :key="h"
                   class="resize-handle" :class="h"
                   @mousedown.stop="startResize($event, el.id, h)"></span>
               </template>
@@ -115,7 +113,7 @@
           <div class="validation-head">
             <span>校验结果</span>
             <span class="section-meta">
-              {{ validation.canPublish ? '可启用' : '不可启用' }}
+              {{ validation.canPublish ? '可保存' : '不可保存' }}
               · 错误 {{ validation.errors.length }} / 警告 {{ validation.warnings.length }} / 提示 {{ validation.tips.length }}
             </span>
           </div>
@@ -146,40 +144,62 @@
               <a-row :gutter="8">
                 <a-col :span="12"><a-form-item label="X mm"><a-input-number v-model:value="selectedElement.x" :step="0.5" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
                 <a-col :span="12"><a-form-item label="Y mm"><a-input-number v-model:value="selectedElement.y" :step="0.5" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
-                <a-col :span="12"><a-form-item label="宽 mm"><a-input-number v-model:value="selectedElement.width" :min="1" :step="0.5" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
-                <a-col :span="12"><a-form-item label="高 mm"><a-input-number v-model:value="selectedElement.height" :min="1" :step="0.5" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
+                <a-col v-if="selectedElement.type !== 'line'" :span="12"><a-form-item label="宽 mm"><a-input-number v-model:value="selectedElement.width" :min="1" :step="0.5" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
+                <a-col v-if="selectedElement.type !== 'line'" :span="12"><a-form-item label="高 mm"><a-input-number v-model:value="selectedElement.height" :min="1" :step="0.5" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
                 <a-col :span="12"><a-form-item label="层级"><a-input-number v-model:value="selectedElement.zIndex" :min="1" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
-                <a-col :span="12"><a-form-item label="旋转"><a-select v-model:value="selectedElement.rotate" @change="onPropChange"><a-select-option :value="0">0°</a-select-option><a-select-option :value="90">90°</a-select-option><a-select-option :value="180">180°</a-select-option><a-select-option :value="270">270°</a-select-option></a-select></a-form-item></a-col>
+                <a-col :span="12"><a-form-item label="旋转"><a-select v-model:value="selectedElement.rotate" data-prop="rotation" @change="onPropChange"><a-select-option :value="0">0°</a-select-option><a-select-option :value="90">90°</a-select-option><a-select-option :value="180">180°</a-select-option><a-select-option :value="270">270°</a-select-option></a-select></a-form-item></a-col>
               </a-row>
               <!-- Text-specific props -->
               <template v-if="selectedElement.type === 'text'">
                 <a-row :gutter="8">
-                  <a-col :span="24"><a-form-item label="文本类型"><a-radio-group v-model:value="selectedElement.textKind" button-style="solid" @change="onPropChange"><a-radio-button value="static">静态文本</a-radio-button><a-radio-button value="field">动态字段</a-radio-button></a-radio-group></a-form-item></a-col>
-                  <a-col v-if="selectedElement.textKind === 'field'" :span="24"><a-form-item label="绑定字段"><a-select v-model:value="selectedElement.bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item></a-col>
-                  <a-col v-else :span="24"><a-form-item label="静态内容"><a-textarea v-model:value="selectedElement.text" :rows="2" @change="onPropChange" /></a-form-item></a-col>
-                  <a-col :span="12"><a-form-item label="字号 px"><a-input-number v-model:value="selectedElement.fontSize" :min="1" :step="1" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
-                  <a-col :span="12"><a-form-item label=" "><a-checkbox v-model:checked="selectedElement.bold" @change="onPropChange">加粗</a-checkbox></a-form-item></a-col>
-                  <a-col :span="12"><a-form-item label="对齐"><a-select v-model:value="selectedElement.align" @change="onPropChange"><a-select-option value="left">左对齐</a-select-option><a-select-option value="center">居中</a-select-option><a-select-option value="right">右对齐</a-select-option></a-select></a-form-item></a-col>
-                  <a-col :span="12"><a-form-item label="颜色"><a-input type="color" v-model:value="selectedElement.color" @change="onPropChange" /></a-form-item></a-col>
+                  <a-col v-if="selectedElement.bindField !== 'directionMark'" :span="24"><a-form-item label="文本类型"><a-radio-group v-model:value="selectedElement.textKind" data-prop="textType" button-style="solid" @change="onPropChange"><a-radio-button value="static">静态文本</a-radio-button><a-radio-button value="field">动态字段</a-radio-button></a-radio-group></a-form-item></a-col>
+                  <a-col :span="24"><a-form-item label="绑定字段"><a-select id="bindField" v-model:value="selectedElement.bindField" data-prop="bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item></a-col>
+                  <a-col v-if="selectedElement.textKind === 'static' && selectedElement.bindField !== 'directionMark'" :span="24"><a-form-item label="静态内容"><a-textarea v-model:value="selectedElement.text" data-prop="staticContent" :rows="2" @change="onPropChange" /></a-form-item></a-col>
+                  <a-col :span="12"><a-form-item label="字号 px"><a-input-number v-model:value="selectedElement.fontSize" data-prop="fontSize" :min="1" :step="1" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
+                  <a-col :span="12"><a-form-item label=" "><a-checkbox v-model:checked="selectedElement.bold" data-prop="bold" @change="onPropChange">加粗</a-checkbox></a-form-item></a-col>
+                  <a-col :span="12"><a-form-item label="对齐"><a-select v-model:value="selectedElement.align" data-prop="textAlign" @change="onPropChange"><a-select-option value="left">左对齐</a-select-option><a-select-option value="center">居中</a-select-option><a-select-option value="right">右对齐</a-select-option></a-select></a-form-item></a-col>
+                  <a-col :span="12"><a-form-item label="颜色"><a-input type="color" v-model:value="selectedElement.color" data-prop="color" @change="onPropChange" /></a-form-item></a-col>
                 </a-row>
               </template>
               <!-- QR/Barcode props -->
               <template v-if="selectedElement.type === 'qrcode' || selectedElement.type === 'barcode'">
-                <a-form-item label="绑定字段"><a-select v-model:value="selectedElement.bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item>
+                <a-form-item label="绑定字段"><a-select v-model:value="selectedElement.bindField" data-prop="bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item>
               </template>
               <!-- Checkbox props -->
               <template v-if="selectedElement.type === 'checkbox'">
-                <a-form-item><a-checkbox v-model:checked="selectedElement.checked" @change="onPropChange">选中</a-checkbox></a-form-item>
-                <a-form-item label="固定文字"><a-input v-model:value="selectedElement.text" @change="onPropChange" placeholder="例如：易碎 / 已复核" /></a-form-item>
-                <a-form-item label="边框颜色"><a-input type="color" v-model:value="selectedElement.color" @change="onPropChange" /></a-form-item>
+                <a-form-item><a-checkbox v-model:checked="selectedElement.checked" data-prop="checked" @change="onPropChange">选中</a-checkbox></a-form-item>
+                <a-form-item label="固定文字"><a-input v-model:value="selectedElement.text" data-prop="fixedText" @change="onPropChange" placeholder="例如：易碎 / 已复核" /></a-form-item>
+                <a-form-item label="边框颜色"><a-input type="color" v-model:value="selectedElement.color" data-prop="borderColor" @change="onPropChange" /></a-form-item>
               </template>
               <!-- Rect props -->
               <template v-if="selectedElement.type === 'rect'">
-                <a-form-item label="背景色"><a-input type="color" v-model:value="selectedElement.backgroundColor" @change="onPropChange" /></a-form-item>
+                <a-form-item label="背景色"><a-input type="color" v-model:value="selectedElement.backgroundColor" data-prop="bgColor" @change="onPropChange" /></a-form-item>
               </template>
               <!-- Line props -->
               <template v-if="selectedElement.type === 'line'">
-                <a-form-item label="线条颜色"><a-input type="color" v-model:value="selectedElement.color" @change="onPropChange" /></a-form-item>
+                <a-row :gutter="8">
+                  <a-col :span="12">
+                    <a-form-item label="方向">
+                      <a-radio-group v-model:value="lineDirection" button-style="solid">
+                        <a-radio-button value="horizontal">横向</a-radio-button>
+                        <a-radio-button value="vertical">纵向</a-radio-button>
+                      </a-radio-group>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="长度 mm">
+                      <a-input-number v-model:value="lineLength" :min="1" :step="0.5" style="width:100%" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-row :gutter="8">
+                  <a-col :span="12">
+                    <a-form-item label="粗细 mm">
+                      <a-input-number v-model:value="lineThickness" :min="0.5" :step="0.5" style="width:100%" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                <a-form-item label="线条颜色"><a-input type="color" v-model:value="selectedElement.color" data-prop="lineColor" @change="onPropChange" /></a-form-item>
               </template>
               <a-button danger block style="margin-top:12px" @click="deleteSelected"><DeleteOutlined /> 删除元素</a-button>
             </a-form>
@@ -190,7 +210,7 @@
     </div>
 
     <!-- Preview Modal -->
-    <a-modal v-model:open="previewVisible" title="模板预览" width="760px" :footer="false">
+    <a-modal v-if="template" v-model:open="previewVisible" title="模板预览" width="760px" :footer="false">
       <div class="preview-wrap">
         <div class="preview-card">
           <div class="label-canvas" :style="previewCanvasStyle">
@@ -226,10 +246,10 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
-  UndoOutlined, RedoOutlined, SaveOutlined, SendOutlined,
+  UndoOutlined, RedoOutlined, SaveOutlined,
   EyeOutlined, ArrowLeftOutlined, DeleteOutlined,
 } from '@ant-design/icons-vue';
-import { getTemplate, updateTemplate, enableTemplate } from '../../api/templateApi.js';
+import { getTemplate, updateTemplate } from '../../api/templateApi.js';
 import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
 import { validateTemplateDsl } from '../../services/validationService.js';
 import { sampleByType } from '../../services/templateDslService.js';
@@ -251,10 +271,23 @@ const saving = ref(false);
 const previewVisible = ref(false);
 const templateWidth = ref(100);
 const templateHeight = ref(80);
+const templateName = ref('');
 
 // Canvas refs
 const canvasRef = ref(null);
 const canvasStageRef = ref(null);
+
+// Keep templateName in sync with loaded template
+watch(() => template.value?.templateName, (val) => {
+  if (val !== undefined && templateName.value !== val) {
+    templateName.value = val;
+  }
+});
+watch(templateName, (val) => {
+  if (template.value && val !== template.value.templateName) {
+    template.value.templateName = val;
+  }
+});
 
 // Drag state (non-reactive, managed via event listeners)
 let dragState = null;
@@ -291,10 +324,68 @@ const allValidationItems = computed(() => [
   ...validation.value.tips.map(x => ({ ...x, level: 'tip', label: '提示' })),
 ]);
 
+const lineDirection = computed({
+  get() {
+    const el = selectedElement.value;
+    if (!el || el.type !== 'line') return 'horizontal';
+    return el.direction || (el.height <= el.width ? 'horizontal' : 'vertical');
+  },
+  set(val) {
+    const el = selectedElement.value;
+    if (!el || el.type !== 'line') return;
+    if ((el.direction || (el.height <= el.width ? 'horizontal' : 'vertical')) !== val) {
+      pushHistory();
+      const w = el.width;
+      el.width = el.height;
+      el.height = w;
+      el.direction = val;
+    }
+  },
+});
+
+const lineLength = computed({
+  get() {
+    const el = selectedElement.value;
+    if (!el || el.type !== 'line') return 0;
+    const dir = el.direction || (el.height <= el.width ? 'horizontal' : 'vertical');
+    return dir === 'horizontal' ? el.width : el.height;
+  },
+  set(val) {
+    const el = selectedElement.value;
+    if (!el || el.type !== 'line') return;
+    const dir = el.direction || (el.height <= el.width ? 'horizontal' : 'vertical');
+    if (dir === 'horizontal') {
+      el.width = Number(val);
+    } else {
+      el.height = Number(val);
+    }
+  },
+});
+
+const lineThickness = computed({
+  get() {
+    const el = selectedElement.value;
+    if (!el || el.type !== 'line') return 1;
+    const dir = el.direction || (el.height <= el.width ? 'horizontal' : 'vertical');
+    return dir === 'horizontal' ? el.height : el.width;
+  },
+  set(val) {
+    const el = selectedElement.value;
+    if (!el || el.type !== 'line') return;
+    const dir = el.direction || (el.height <= el.width ? 'horizontal' : 'vertical');
+    if (dir === 'horizontal') {
+      el.height = Number(val);
+    } else {
+      el.width = Number(val);
+    }
+  },
+});
+
 const previewCanvasStyle = computed(() => {
   if (!template.value) return {};
-  const tpl = getPrintableTemplate(template.value);
-  const z = Math.min(1.4, 340 / (tpl.size.width * PX_PER_MM));
+  const tpl = template.value;
+  const availWidth = 480;
+  const z = Math.min(2, availWidth / (tpl.size.width * PX_PER_MM));
   return { width: `${tpl.size.width * PX_PER_MM * z}px`, height: `${tpl.size.height * PX_PER_MM * z}px` };
 });
 
@@ -316,8 +407,9 @@ function getElementStyle(el) {
 }
 
 function getPreviewElementStyle(el) {
-  const tpl = getPrintableTemplate(template.value);
-  const z = Math.min(1.4, 340 / (tpl.size.width * PX_PER_MM));
+  const tpl = template.value;
+  const availWidth = 480;
+  const z = Math.min(2, availWidth / (tpl.size.width * PX_PER_MM));
   const justify = ['qrcode', 'barcode', 'image'].includes(el.type) ? 'center' : alignToFlex(el.align || 'left');
   return {
     left: `${el.x * PX_PER_MM * z}px`,
@@ -336,11 +428,21 @@ function getPreviewElementStyle(el) {
 
 function getTextDisplay(el) {
   if (el.type !== 'text') return '';
-  if (el.textKind === 'field') return `[${el.bindField || '未绑定'}]`;
-  return el.text || '静态文本';
+  if (el.textKind === 'field') {
+    if (el.bindField === 'directionMark') return '↑↓';
+    const fields = FIELD_DICT[template.value?.templateType] || [];
+    const f = fields.find(x => x.code === el.bindField);
+    return f ? f.name : (el.bindField || '未绑定');
+  }
+  return el.text ?? '静态文本';
 }
 
 // ── History ──
+function lineResizeHandles(el) {
+  const dir = el.direction || (el.height <= el.width ? 'horizontal' : 'vertical');
+  return dir === 'horizontal' ? ['e', 'w'] : ['n', 's'];
+}
+
 function pushHistory() {
   history.value.push(deepClone(template.value.elements));
   if (history.value.length > 10) history.value.shift();
@@ -352,7 +454,6 @@ function undo() {
   future.value.push(deepClone(template.value.elements));
   template.value.elements = history.value.pop();
   selectedElementId.value = template.value.elements[0]?.id || null;
-  runValidation();
 }
 
 function redo() {
@@ -360,13 +461,26 @@ function redo() {
   history.value.push(deepClone(template.value.elements));
   template.value.elements = future.value.pop();
   selectedElementId.value = template.value.elements[0]?.id || null;
-  runValidation();
 }
 
 // ── Validation ──
 function runValidation() {
-  if (!template.value) return;
+  if (!template.value) {
+    message.warning('模板未加载，请先选择模板');
+    return;
+  }
   validation.value = validateTemplateDsl(template.value);
+  const { errors, warnings, tips } = validation.value;
+  if (errors.length) {
+    message.error(`校验未通过：${errors.length} 个错误，${warnings.length} 个警告`);
+  } else if (warnings.length) {
+    message.warning(`校验通过：${warnings.length} 个警告，${tips.length} 个提示`);
+  } else {
+    message.success('校验通过，模板符合发布标准');
+  }
+  setTimeout(() => {
+    document.querySelector('.validation-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
 }
 
 // ── Element Operations ──
@@ -395,9 +509,15 @@ function addElementFromData(data) {
       (!el.bindField || !currentFields.value.some(f => f.code === el.bindField))) {
     el.bindField = currentFields.value[0]?.code || '';
   }
+  if (el.type === 'text' && el.textKind === 'field') {
+    const boundField = currentFields.value.find(f => f.code === el.bindField);
+    if (boundField) el.text = boundField.name;
+  }
+  if (el.type === 'text' && el.bindField === 'directionMark') {
+    el.color = '#ffffff';
+  }
   template.value.elements.push(el);
   selectedElementId.value = el.id;
-  runValidation();
 }
 
 function deleteSelected() {
@@ -405,7 +525,6 @@ function deleteSelected() {
   pushHistory();
   template.value.elements = template.value.elements.filter(el => el.id !== selectedElementId.value);
   selectedElementId.value = template.value.elements[0]?.id || null;
-  runValidation();
 }
 
 let clipboardElement = null;
@@ -422,11 +541,14 @@ function pasteSelected() {
   const el = { ...deepClone(clipboardElement), id: uid(clipboardElement.type), x: clipboardElement.x + 3, y: clipboardElement.y + 3 };
   template.value.elements.push(el);
   selectedElementId.value = el.id;
-  runValidation();
 }
 
 function onPropChange() {
-  runValidation();
+  const el = selectedElement.value;
+  if (el && el.type === 'text' && el.bindField === 'directionMark') {
+    if (el.textKind !== 'field') el.textKind = 'field';
+    el.color = '#ffffff';
+  }
 }
 
 function onSizeChange() {
@@ -434,7 +556,6 @@ function onSizeChange() {
   pushHistory();
   template.value.size.width = templateWidth.value;
   template.value.size.height = templateHeight.value;
-  runValidation();
 }
 
 // ── Canvas Element Drag/Resize ──
@@ -496,7 +617,6 @@ function onPointerMove(event) {
 function endPointerMove() {
   document.removeEventListener('pointermove', onPointerMove);
   dragState = null;
-  runValidation();
 }
 
 // ── Palette Drag & Drop ──
@@ -506,7 +626,7 @@ function handleDragStart(event, comp) {
 
 function handleFieldDragStart(event, field) {
   event.dataTransfer.setData('application/json', JSON.stringify({
-    type: 'text', preset: { textKind: 'field', bindField: field.code, width: 34, height: 8, fontSize: 12 },
+    type: 'text', preset: { textKind: 'field', bindField: field.code, text: field.name, width: 34, height: 8, fontSize: 12 },
   }));
 }
 
@@ -530,9 +650,15 @@ function handleDrop(event) {
       (!el.bindField || !currentFields.value.some(f => f.code === el.bindField))) {
     el.bindField = currentFields.value[0]?.code || '';
   }
+  if (el.type === 'text' && el.textKind === 'field') {
+    const boundField = currentFields.value.find(f => f.code === el.bindField);
+    if (boundField) el.text = boundField.name;
+  }
+  if (el.type === 'text' && el.bindField === 'directionMark') {
+    el.color = '#ffffff';
+  }
   template.value.elements.push(el);
   selectedElementId.value = el.id;
-  runValidation();
 }
 
 // ── Zoom ──
@@ -548,9 +674,18 @@ function zoomOut() {
   if (idx > 0) zoom.value = steps[idx - 1];
 }
 
-// ── Save / Publish / Preview ──
+// ── Save / Preview ──
 async function handleSave() {
   if (!template.value) return;
+  validation.value = validateTemplateDsl(template.value);
+  const { errors, warnings } = validation.value;
+  if (errors.length || warnings.length) {
+    message.error(`校验未通过：${errors.length} 个错误，${warnings.length} 个警告，请修复后再保存`);
+    setTimeout(() => {
+      document.querySelector('.validation-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    return;
+  }
   saving.value = true;
   try {
     const payload = deepClone(template.value);
@@ -560,18 +695,6 @@ async function handleSave() {
     message.error(`保存失败：${error.message}`);
   } finally {
     saving.value = false;
-  }
-}
-
-async function handlePublish() {
-  if (!validation.value.canPublish) return;
-  await handleSave();
-  try {
-    await enableTemplate(template.value.id);
-    template.value.status = 'enabled';
-    message.success('模板已发布');
-  } catch (error) {
-    message.error(`发布失败：${error.message}`);
   }
 }
 
@@ -626,7 +749,6 @@ function handleKeyDown(event) {
     if (event.key === 'ArrowRight') el.x = round1(clamp(el.x + step, -el.width + 1, tw - 1));
     if (event.key === 'ArrowUp') el.y = round1(clamp(el.y - step, -el.height + 1, th - 1));
     if (event.key === 'ArrowDown') el.y = round1(clamp(el.y + step, -el.height + 1, th - 1));
-    runValidation();
   }
 }
 
@@ -640,7 +762,6 @@ onMounted(async () => {
     templateWidth.value = tpl.size.width;
     templateHeight.value = tpl.size.height;
     if (tpl.elements?.length) selectedElementId.value = tpl.elements[0].id;
-    runValidation();
   } catch (error) {
     message.error(`加载模板失败：${error.message}`);
   } finally {
@@ -655,6 +776,138 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ── Layout ── */
+.designer {
+  display: flex; flex-direction: column;
+  height: calc(100vh - 80px);
+  gap: 10px;
+}
+.designer-top {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  padding: 8px 14px; background: #fff; border: 1px solid #f0f0f0; border-radius: 8px;
+  gap: 8px;
+}
+.designer-size-editor { display: flex; align-items: center; gap: 4px; }
+.designer-size-label { font-size: 13px; color: var(--wms-muted); }
+.designer-unit-text { font-size: 13px; color: var(--wms-muted); }
+.toolbar-actions { display: flex; align-items: center; gap: 4px; }
+
+.designer-body {
+  flex: 1; display: flex; gap: 10px; overflow: hidden; min-height: 0;
+}
+
+/* ── Left: Component Panel ── */
+.toolbox {
+  width: 170px; flex-shrink: 0;
+  background: #fff; border: 1px solid #f0f0f0; border-radius: 8px;
+  padding: 12px; display: flex; flex-direction: column; overflow-y: auto;
+  gap: 12px;
+}
+.tool-section h3 { font-size: 14px; margin-bottom: 8px; color: var(--wms-text); }
+.component-list { display: flex; flex-direction: column; gap: 6px; }
+.component-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 1px solid #e8edf2; border-radius: 6px;
+  cursor: grab; font-size: 13px; user-select: none;
+}
+.component-btn:hover { border-color: var(--wms-blue); background: #f0f7ff; }
+.component-btn strong { color: var(--wms-blue); width: 20px; text-align: center; }
+.field-chip {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 10px; margin-bottom: 4px; border: 1px solid #e8edf2; border-radius: 6px;
+  cursor: grab; font-size: 13px; user-select: none;
+}
+.field-chip:hover { border-color: var(--wms-blue); background: #f0f7ff; }
+.field-chip code { font-size: 11px; color: var(--wms-muted); }
+
+/* ── Center: Canvas ── */
+.canvas-shell {
+  flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden;
+}
+.canvas-toolbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 12px; background: #fff; border: 1px solid #f0f0f0; border-radius: 8px;
+}
+.canvas-stage {
+  flex: 1; overflow: auto;
+  background: #eef2f7; border: 1px solid #f0f0f0; border-radius: 8px;
+  padding: 20px; display: flex; align-items: flex-start; justify-content: center;
+}
+.label-canvas {
+  position: relative; background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.label-canvas.grid-on {
+  background-image:
+    linear-gradient(to right, #e8edf2 1px, transparent 1px),
+    linear-gradient(to bottom, #e8edf2 1px, transparent 1px);
+  background-size: 5mm 5mm;
+}
+
+/* ── Template Elements ── */
+.template-el {
+  position: absolute; cursor: move; overflow: hidden;
+  display: flex; align-items: center;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+.template-el.selected { border-color: var(--wms-blue); outline: 2px solid rgba(0,128,255,0.25); }
+.el-content { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.el-qrcode, .el-barcode { background: #f9f9f9; }
+.qr { width: 100%; height: 100%; background: repeating-conic-gradient(#999 0% 25%, #fff 0% 50%) 50% / 8px 8px; border: 1px dashed #ddd; }
+.barcode { width: 100%; height: 100%; background: repeating-linear-gradient(90deg, #333 0px 2px, #fff 2px 4px); border: 1px dashed #ddd; }
+.checkbox-content { display: flex; align-items: center; gap: 4px; }
+.checkbox-mark { width: 16px; height: 16px; border: 2px solid #999; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.checkbox-mark.checked { background: var(--wms-blue); border-color: var(--wms-blue); color: #fff; }
+.checkbox-label { font-size: 12px; }
+
+/* Resize handles */
+.resize-handle { position: absolute; width: 8px; height: 8px; background: #fff; border: 1.5px solid var(--wms-blue); border-radius: 2px; z-index: 10; }
+.resize-handle.nw { top: -4px; left: -4px; cursor: nw-resize; }
+.resize-handle.n { top: -4px; left: 50%; margin-left: -4px; cursor: n-resize; }
+.resize-handle.ne { top: -4px; right: -4px; cursor: ne-resize; }
+.resize-handle.e { top: 50%; margin-top: -4px; right: -4px; cursor: e-resize; }
+.resize-handle.se { bottom: -4px; right: -4px; cursor: se-resize; }
+.resize-handle.s { bottom: -4px; left: 50%; margin-left: -4px; cursor: s-resize; }
+.resize-handle.sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+.resize-handle.w { top: 50%; margin-top: -4px; left: -4px; cursor: w-resize; }
+
+/* ── Validation Panel ── */
+.validation-panel {
+  background: #fff; border: 1px solid #f0f0f0; border-radius: 8px;
+  margin-top: 4px; max-height: 120px; overflow-y: auto;
+}
+.validation-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; border-bottom: 1px solid #f0f0f0;
+  font-size: 13px; font-weight: 600;
+}
+.validation-list { padding: 6px 12px; }
+.validation-item { padding: 4px 0; font-size: 12px; cursor: pointer; border-bottom: 1px solid #fafafa; }
+.validation-item.error { color: #ef4444; }
+.validation-item.warning { color: #f59e0b; }
+.validation-item.tip { color: #6d7b92; }
+.validation-item strong { margin-right: 4px; }
+.empty-state { color: var(--wms-muted); font-size: 13px; padding: 8px 0; text-align: center; }
+
+/* ── Right: Properties Panel ── */
+.props-panel {
+  width: 240px; flex-shrink: 0;
+  background: #fff; border: 1px solid #f0f0f0; border-radius: 8px;
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.section-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; font-size: 13px;
+}
+.section-meta { font-size: 12px; color: var(--wms-muted); }
+.props-body { flex: 1; overflow-y: auto; padding: 14px; }
+
+/* ── Preview Modal ── */
+.preview-wrap { display: flex; gap: 20px; align-items: flex-start; }
+.preview-card { flex-shrink: 0; padding: 16px; background: #eef2f7; border-radius: 8px; }
+
+/* ── Deep styles for AntDV form items inside designer ── */
 .designer :deep(.ant-form-item) { margin-bottom: 8px; }
 .designer :deep(.ant-form-item-label) { padding-bottom: 2px; }
 .designer :deep(.ant-form-item-label label) { height: 22px; font-size: 13px; color: #42536d; }

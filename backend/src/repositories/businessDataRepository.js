@@ -159,6 +159,12 @@ function buildOrder(mapping, query) {
   if (query.sortField === "updatedAt") {
     return `${quoteIdentifier(mapping.updatedAtColumn)} ${dir}`;
   }
+  // Support sorting by field codes (e.g., locationCode, containerCode, productCode)
+  const field = mapping.fields.find((f) => f.code === query.sortField);
+  if (field) {
+    const expr = sourceExpression(mapping, field);
+    return `${expr.sql} ${dir}`;
+  }
   return defaultOrder;
 }
 

@@ -1,7 +1,7 @@
 <template>
   <div class="login-card">
     <div class="login-header">
-      <h2>WMS 打印模板中心</h2>
+      <h2>打印模板中心</h2>
       <p class="login-subtitle">模板管理系统</p>
     </div>
     <a-form

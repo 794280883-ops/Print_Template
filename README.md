@@ -1,10 +1,10 @@
-# WMS 打印模板中心
+# 打印模板中心
 
 可视化打印模板设计与管理平台，支持库位/容器/商品三种模板类型的拖拽式设计、字段动态绑定、一键发布与打印。
 
 ## 核心功能
 
-- **模板管理**：创建、编辑、复制、发布、停用、删除、导入/导出
+- **模板管理**：创建、编辑、复制、启用/停用、删除、批量操作
 - **可视化设计器**：拖拽组件（文本/横线/矩形/一维码/二维码/复选框）、属性编辑、字段绑定、画布实时预览
 - **字段字典**：库位/容器/商品三类型树形分类，展示名称与存储编码映射
 - **业务数据管理**：测试库接入、Excel 导入、搜索与 CRUD
@@ -15,7 +15,7 @@
 
 | 层 | 技术选型 |
 |---|---|
-| 前端 | Vite + Vanilla JavaScript + Bootstrap 5 |
+| 前端 | Vite + Vue 3 + Ant Design Vue 4.x |
 | 后端 | Node.js + Express (REST API) |
 | 数据库 | MySQL 8.4 |
 | 容器化 | Docker + Docker Compose |
@@ -85,11 +85,15 @@ wms-print-template-center/
 ├── frontend/                 # 前端工程
 │   ├── src/
 │   │   ├── api/              # API 封装
-│   │   ├── app/              # 主应用逻辑
+│   │   ├── components/       # 公共组件
 │   │   ├── data/             # 数据常量
-│   │   ├── pages/            # 页面模块
-│   │   ├── services/         # 业务服务
-│   │   └── styles/           # 样式文件
+│   │   ├── directives/       # 自定义指令
+│   │   ├── layouts/          # 布局组件
+│   │   ├── router/           # 路由配置
+│   │   ├── stores/           # 状态管理
+│   │   ├── views/            # 页面视图
+│   │   ├── App.vue           # 根组件
+│   │   └── main.js           # 入口文件
 │   └── index.html
 ├── nginx/                    # Nginx 配置
 └── scripts/                  # 部署脚本
@@ -104,7 +108,55 @@ wms-print-template-center/
 - [服务器部署指南](docs/服务器部署指南.md)
 - [接口文档](docs/接口文档.md)
 - [数据库设计](docs/数据库设计.md)
-- [项目交接说明](docs/项目交接说明.md)
+
+## 字段映射参考
+
+### 库位 (LOCATION → location)
+
+| 前端字段 | 数据库列 | 必填 |
+|----------|----------|------|
+| locationCode | location_code | 是 |
+| locationPrefix | location_prefix | — |
+| row | location_row | — |
+| column | location_column | — |
+| level | location_floor | — |
+| directionMark | direction_flag | — |
+| warehouseCode | region_warehouse_code | — |
+| areaCode | physics_warehouse_code | — |
+
+### 容器 (CONTAINER → container)
+
+| 前端字段 | 数据库列 | 必填 |
+|----------|----------|------|
+| containerCode | container_code | 是 |
+| warehouseCode | region_warehouse_code | — |
+| areaCode | physics_warehouse_code | — |
+
+### 商品 (PRODUCT → product)
+
+| 前端字段 | 数据库列 | 必填 |
+|----------|----------|------|
+| productCode | sku | 是 |
+| customerProductCode | customer_code | — |
+
+### 方向标规则
+
+```
+direction_flag = 1  → 显示"向上" → 打印 ↑
+direction_flag = 2  → 显示"向下" → 打印 ↓
+direction_flag = 空 → 显示空 → 打印空
+```
+
+## 给后续开发者
+
+继续开发前先执行：
+
+```bash
+cd /Users/l/Documents/Codex/wms-print-template-center
+git status --short --branch
+./scripts/dev-local.sh    # 本地调试
+./scripts/check-before-push.sh  # 提交前检查
+```
 
 ## 后续计划
 
@@ -114,3 +166,24 @@ wms-print-template-center/
 - 数据备份策略
 - 自动化测试
 - 打印模板版本管理
+
+## 项目规范
+
+### 文件目录约定
+
+| 目录 | 用途 |
+|------|------|
+| `test-media/` | 测试截图和录屏（*.png, *.webm 等） |
+| `test-reports/` | 测试报告和用例脚本 |
+| `docs/` | 项目文档 |
+
+- 禁止将图片/视频直接放在项目根目录
+- 测试截图按步骤顺序命名（如 `step1-xxx.png`）
+- 定期清理不再需要的临时测试文件
+
+### Playwright 测试规范
+
+- 复用已有浏览器窗口，不重复打开
+- 测试完成后保持浏览器开启，便于人工检查
+- 禁止使用 `npx playwright-cli close`
+- 测试需覆盖页面所有可交互元素（按钮、输入框、下拉框、复选框、链接等）

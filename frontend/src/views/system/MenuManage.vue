@@ -63,6 +63,7 @@ function seedData() {
         { id: 43, title: '菜单管理', path: '/system/menus', icon: 'MenuOutlined', permission: 'system:menu:view', sort: 3, children: [] },
       ]},
     );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
   }
   return existing;
 }

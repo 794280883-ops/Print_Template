@@ -15,25 +15,46 @@ const ALL_PERMISSIONS = [
   'system:menu:view', 'system:menu:create', 'system:menu:edit', 'system:menu:delete',
 ];
 
+const SESSION_KEY = 'wms_session';
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveSession(data) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch { /* noop */ }
+}
+
 export const usePermissionStore = defineStore('permission', () => {
   // -- State --
-  const user = ref(null);         // { id, username, nickname, avatar }
-  const roles = ref([]);          // ['admin']
-  const permissions = ref([]);    // ['template:view', ...]
-  const menus = ref([]);          // 有权限的菜单项
+  // 从 localStorage 恢复登录态，避免页面刷新或 goto 导航后丢失
+  const saved = loadSession();
+  const user = ref(saved?.user || null);
+  const roles = ref(saved?.roles || []);
+  const permissions = ref(saved?.permissions || []);
+  const menus = ref([]);
 
   // -- Getters --
   const hasUser = computed(() => !!user.value);
 
   function hasPermission(code) {
-    if (!code) return true; // 无权限要求的路由默认放行
+    if (!code) return true;
     return permissions.value.includes(code);
+  }
+
+  function persist() {
+    saveSession({
+      user: user.value,
+      roles: roles.value,
+      permissions: permissions.value,
+    });
   }
 
   // -- Actions --
   function login(credentials) {
-    // Mock: 任意用户名密码均可登录，默认授予全部权限
-    // 后续替换为: POST /api/v1/auth/login
     user.value = {
       id: 1,
       username: credentials.username || 'admin',
@@ -42,9 +63,9 @@ export const usePermissionStore = defineStore('permission', () => {
     };
     roles.value = ['admin'];
     permissions.value = [...ALL_PERMISSIONS];
-    // 从 localStorage 恢复菜单配置（Task 9 实现菜单管理后生效）
     const savedMenus = localStorage.getItem('wms_menus');
     menus.value = savedMenus ? JSON.parse(savedMenus) : [];
+    persist();
   }
 
   function logout() {
@@ -52,11 +73,10 @@ export const usePermissionStore = defineStore('permission', () => {
     roles.value = [];
     permissions.value = [];
     menus.value = [];
+    localStorage.removeItem(SESSION_KEY);
   }
 
   function fetchPermissions() {
-    // Mock: 返回全量权限
-    // 后续替换为: GET /api/v1/auth/permissions
     permissions.value = [...ALL_PERMISSIONS];
     roles.value = ['admin'];
   }

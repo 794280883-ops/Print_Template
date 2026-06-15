@@ -13,11 +13,6 @@ export const STATUS_LABEL = {
   disabled: "停用",
 };
 
-export const STATUS_CLASS = {
-  enabled: "is-success",
-  disabled: "is-danger",
-};
-
 export const FIELD_DICT = {
   LOCATION: [
     { code: "locationCode", name: "库位编码", type: "string", example: "DD1801-004A", required: true, desc: "库位唯一标识编码，由系统按规则自动生成或手动指定，全局唯一" },
@@ -47,7 +42,7 @@ export const COMPONENTS = [
   { type: "text", label: "动态字段", icon: "{}", preset: { textKind: "field", bindField: "locationCode", width: 38, height: 9, fontSize: 14, bold: true } },
   { type: "qrcode", label: "二维码", icon: "QR", preset: { bindField: "locationCode", width: 18, height: 18, errorLevel: "M" } },
   { type: "barcode", label: "一维码", icon: "|||", preset: { bindField: "locationCode", width: 42, height: 13, errorLevel: "M" } },
-  { type: "line", label: "横线", icon: "—", preset: { width: 50, height: 1 } },
+  { type: "line", label: "横线", icon: "—", preset: { width: 50, height: 1, direction: "horizontal" } },
   { type: "rect", label: "矩形", icon: "□", preset: { width: 30, height: 14, color: "#000000", backgroundColor: "#000000" } },
   { type: "checkbox", label: "复选框", icon: "☑", preset: { width: 24, height: 7, checked: false, text: "" } },
 ];

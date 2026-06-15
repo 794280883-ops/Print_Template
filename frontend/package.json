@@ -12,6 +12,8 @@
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
     "bootstrap": "5.3.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "pinia": "^2.3.1",
     "vue": "^3.5.38",
     "vue-router": "^4.6.4"

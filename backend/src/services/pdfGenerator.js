@@ -22,8 +22,7 @@ const CJK_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf";
 export async function generateTemplatePdf(template, dataRows, options = {}) {
   const copies = Math.max(1, options.copies || 1);
   const { size, elements = [] } = template;
-  const printRotation = normalizePrintRotation(template.printRotation);
-  const outputSize = getPrintedSize(size, printRotation);
+  const outputSize = { ...size, width: Number(size.width), height: Number(size.height) };
 
   const pageWidthPt = outputSize.width * MM_TO_PT;
   const pageHeightPt = outputSize.height * MM_TO_PT;
@@ -58,8 +57,7 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
   };
 
   // Sort elements by zIndex
-  const sorted = transformElementsForPrint(elements, size, printRotation)
-    .sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
+  const sorted = [...elements].sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
 
   // Generate pages
   for (const dataRow of dataRows) {
@@ -73,60 +71,6 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
   doc.end();
 
   return pdfPromise;
-}
-
-function normalizePrintRotation(value) {
-  const angle = ((Number(value || 0) % 360) + 360) % 360;
-  return [0, 90, 180, 270].includes(angle) ? angle : 0;
-}
-
-function getPrintedSize(size, rotation) {
-  if (rotation === 90 || rotation === 270) {
-    return { ...size, width: Number(size.height), height: Number(size.width) };
-  }
-  return { ...size, width: Number(size.width), height: Number(size.height) };
-}
-
-function transformElementsForPrint(elements, size, rotation) {
-  if (!rotation) return [...elements];
-  const width = Number(size.width);
-  const height = Number(size.height);
-  return elements.map((element) => {
-    const x = Number(element.x || 0);
-    const y = Number(element.y || 0);
-    const w = Number(element.width || 1);
-    const h = Number(element.height || 1);
-    const centerX = x + w / 2;
-    const centerY = y + h / 2;
-    let nextCenterX = centerX;
-    let nextCenterY = centerY;
-
-    if (rotation === 90) {
-      nextCenterX = height - centerY;
-      nextCenterY = centerX;
-    } else if (rotation === 180) {
-      nextCenterX = width - centerX;
-      nextCenterY = height - centerY;
-    } else if (rotation === 270) {
-      nextCenterX = centerY;
-      nextCenterY = width - centerX;
-    }
-
-    return {
-      ...element,
-      x: round2(nextCenterX - w / 2),
-      y: round2(nextCenterY - h / 2),
-      rotate: normalizeElementRotation(Number(element.rotate || 0) + rotation),
-    };
-  });
-}
-
-function normalizeElementRotation(value) {
-  return ((Number(value || 0) % 360) + 360) % 360;
-}
-
-function round2(value) {
-  return Math.round(Number(value) * 100) / 100;
 }
 
 async function renderPage(doc, elements, data, templateSize, ensureCjkFont) {
@@ -206,7 +150,6 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
 
   const fontSize = el.fontSize || 12;
   const color = el.color || "#111827";
-  const align = el.align || "left";
 
   // Use CJK font for Chinese text; fall back to Helvetica if unavailable
   if (cjkFontAvailable) {
@@ -226,12 +169,18 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
   const textHeight = fontSize * 1.2;
   const textY = y + (h - textHeight) / 2;
 
-  // Use padded width to prevent CJK text clipping; left-align to avoid position shifts
-  doc.text(value, x, textY, {
+  const textOpts = {
     width: w + 100,
-    align: "left",
+    align: el.align || "left",
     lineBreak: false,
-  });
+  };
+
+  doc.text(value, x, textY, textOpts);
+
+  // Simulate bold for CJK fonts by re-rendering with slight horizontal spread
+  if (el.bold) {
+    doc.text(value, x + 0.5, textY, textOpts);
+  }
 }
 
 // ── Barcode ─────────────────────────────────────────
@@ -293,13 +242,16 @@ async function renderQrcode(doc, el, data, x, y, w, h) {
 // ── Line ────────────────────────────────────────────
 function renderLine(doc, el, x, y, w, h) {
   const color = el.color || "#111827";
-  doc.lineWidth(1).strokeColor(color);
+  const isHorizontal = h <= w;
+  const thickness = isHorizontal ? h : w;
 
-  if (h <= w) {
-    // Horizontal line
+  doc.lineWidth(thickness).strokeColor(color);
+
+  if (isHorizontal) {
+    // Horizontal line — draw through the vertical center
     doc.moveTo(x, y + h / 2).lineTo(x + w, y + h / 2).stroke();
   } else {
-    // Vertical line
+    // Vertical line — draw through the horizontal center
     doc.moveTo(x + w / 2, y).lineTo(x + w / 2, y + h).stroke();
   }
 }

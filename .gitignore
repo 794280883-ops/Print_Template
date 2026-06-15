@@ -19,3 +19,9 @@ frontend/.vite/
 frontend/.env
 frontend/.env.test
 frontend/.env.production
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+.playwright-cli/

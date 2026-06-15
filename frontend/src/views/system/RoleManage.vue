@@ -66,6 +66,7 @@ function seedData() {
   if (existing.length === 0) {
     existing.push({ id: 1, name: '管理员', code: 'admin', permissions: Object.values(permissionGroups).flat() });
     existing.push({ id: 2, name: '操作员', code: 'operator', permissions: ['template:view','template:publish','business:view','business:create','business:edit','field:view'] });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
   }
   return existing;
 }
