@@ -1,0 +1,27 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 47.113.118.74
+          username: root
+          key: ${{ secrets.WMS_DEPLOY_KEY }}
+          script_stop: true
+          script: |
+            cd /opt/wms-print-template-center
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+            docker compose --env-file .env.production up -d --build
+            docker compose --env-file .env.production ps
+            curl -fsS http://127.0.0.1/api/v1/health
