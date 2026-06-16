@@ -54,6 +54,7 @@ export async function getDetail(mapping, bizCode) {
 }
 
 export async function create(mapping, fields = {}) {
+  if (mapping.storageMode === "json_table") return createJson(mapping, fields);
   const insert = buildWrite(mapping, fields);
   const table = quoteIdentifier(mapping.table);
   await pool.query(
@@ -65,6 +66,7 @@ export async function create(mapping, fields = {}) {
 }
 
 export async function update(mapping, bizCode, fields = {}) {
+  if (mapping.storageMode === "json_table") return updateJson(mapping, bizCode, fields);
   const write = buildWrite(mapping, fields);
   const table = quoteIdentifier(mapping.table);
   await pool.query(
@@ -77,10 +79,41 @@ export async function update(mapping, bizCode, fields = {}) {
 }
 
 export async function remove(mapping, bizCode) {
+  if (mapping.storageMode === "json_table") return removeJson(mapping, bizCode);
   const table = quoteIdentifier(mapping.table);
   const [result] = await pool.query(
     `DELETE FROM ${table} WHERE ${quoteIdentifier(mapping.bizCodeColumn)} = ?`,
     [bizCode],
+  );
+  return result.affectedRows;
+}
+
+async function createJson(mapping, fields = {}) {
+  const bizCode = fields[mapping.codeField];
+  await pool.query(
+    `INSERT INTO business_data (business_type, business_code, business_data)
+     VALUES (?, ?, ?)`,
+    [mapping.code, bizCode, JSON.stringify(fields)],
+  );
+  return getDetail(mapping, bizCode);
+}
+
+async function updateJson(mapping, bizCode, fields = {}) {
+  const nextBizCode = fields[mapping.codeField];
+  await pool.query(
+    `UPDATE business_data
+     SET business_code = ?, business_data = ?
+     WHERE business_type = ? AND business_code = ?`,
+    [nextBizCode, JSON.stringify(fields), mapping.code, bizCode],
+  );
+  return getDetail(mapping, nextBizCode);
+}
+
+async function removeJson(mapping, bizCode) {
+  const [result] = await pool.query(
+    `DELETE FROM business_data
+     WHERE business_type = ? AND business_code = ?`,
+    [mapping.code, bizCode],
   );
   return result.affectedRows;
 }
@@ -129,6 +162,7 @@ function buildWrite(mapping, fields) {
 }
 
 function bizFieldCode(mapping) {
+  if (mapping.storageMode === "json_table") return mapping.codeField;
   const field = mapping.fields.find((item) => item.source === "column" && item.column === mapping.bizCodeColumn);
   return field?.code || "";
 }
@@ -162,6 +196,9 @@ function buildOrder(mapping, query) {
   // Support sorting by field codes (e.g., locationCode, containerCode, productCode)
   const field = mapping.fields.find((f) => f.code === query.sortField);
   if (field) {
+    if (field.source === "json") {
+      return `${jsonSourceSql(mapping, field)} ${dir}`;
+    }
     const expr = sourceExpression(mapping, field);
     return `${expr.sql} ${dir}`;
   }
@@ -204,6 +241,12 @@ function sourceExpression(mapping, source) {
     };
   }
   throw new Error(`Unsupported business data source: ${source.source}`);
+}
+
+function jsonSourceSql(mapping, source) {
+  const path = String(source.path || "");
+  if (!/^\$\.[A-Za-z0-9_]+$/.test(path)) throw new Error(`Unsafe JSON path: ${path}`);
+  return `JSON_UNQUOTE(JSON_EXTRACT(${quoteIdentifier(mapping.fieldsJsonColumn)}, '${path}'))`;
 }
 
 function toDto(mapping, row) {

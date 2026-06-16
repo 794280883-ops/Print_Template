@@ -19,9 +19,13 @@
             allow-clear
             style="width: 140px"
           >
-            <a-select-option value="LOCATION">库位模板</a-select-option>
-            <a-select-option value="CONTAINER">容器模板</a-select-option>
-            <a-select-option value="PRODUCT">商品模板</a-select-option>
+            <a-select-option
+              v-for="module in moduleOptions"
+              :key="module.code"
+              :value="module.code"
+            >
+              {{ module.templateLabel || module.code }}
+            </a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="状态">
@@ -77,7 +81,7 @@
           </template>
           <!-- 类型 - tag -->
           <template v-else-if="column.key === 'type'">
-            <a-tag>{{ TYPE_LABEL[record.templateType] || record.templateType }}</a-tag>
+            <a-tag>{{ getTemplateTypeLabel(record.templateType) }}</a-tag>
           </template>
           <!-- 状态 - colored tag -->
           <template v-else-if="column.key === 'status'">
@@ -129,7 +133,7 @@
           <div class="section-head"><span style="font-weight:700">模板信息</span></div>
           <div style="padding:14px;display:grid;gap:8px">
             <div><b>模板名称：</b>{{ previewTemplate.templateName }}</div>
-            <div><b>模板类型：</b>{{ TYPE_LABEL[previewTemplate.templateType] || previewTemplate.templateType }}</div>
+            <div><b>模板类型：</b>{{ getTemplateTypeLabel(previewTemplate.templateType) }}</div>
             <div><b>尺寸：</b>{{ previewTemplate.size.width }} × {{ previewTemplate.size.height }}mm</div>
             <div><b>状态：</b><a-tag :color="previewTemplate.status === 'enabled' ? 'green' : 'red'">{{ STATUS_LABEL[previewTemplate.status] || previewTemplate.status }}</a-tag></div>
           </div>
@@ -207,9 +211,13 @@
         </a-form-item>
         <a-form-item label="模版类型" required>
           <a-select v-model:value="createForm.templateType" placeholder="请选择模版类型">
-            <a-select-option value="LOCATION">库位</a-select-option>
-            <a-select-option value="CONTAINER">容器</a-select-option>
-            <a-select-option value="PRODUCT">商品</a-select-option>
+            <a-select-option
+              v-for="module in moduleOptions"
+              :key="module.code"
+              :value="module.code"
+            >
+              {{ module.name || module.templateLabel || module.code }}
+            </a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="尺寸(mm)">
@@ -243,6 +251,7 @@ import {
   downloadPrintPdf,
   batchUpdateTemplateStatus,
 } from '../../api/templateApi.js';
+import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { searchBusinessData } from '../../api/businessDataApi.js';
 import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM } from '../../data/constants.js';
 
@@ -252,6 +261,13 @@ const router = useRouter();
 const rows = ref([]);
 const loading = ref(false);
 const selectedRowKeys = ref([]);
+const modules = ref([]);
+
+const fallbackModules = [
+  { code: 'LOCATION', name: '库位', templateLabel: '库位模板', dataLabel: '库位数据' },
+  { code: 'CONTAINER', name: '容器', templateLabel: '容器模板', dataLabel: '容器数据' },
+  { code: 'PRODUCT', name: '商品', templateLabel: '商品模板', dataLabel: '商品数据' },
+];
 
 const filters = reactive({
   name: '',
@@ -301,6 +317,12 @@ const tablePagination = computed(() => ({
     `显示第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
   pageSizeOptions: ['10', '20', '50', '100'],
 }));
+
+const moduleOptions = computed(() => modules.value.length ? modules.value : fallbackModules);
+
+const moduleLabelMap = computed(() => {
+  return Object.fromEntries(moduleOptions.value.map((item) => [item.code, item.templateLabel || item.name || item.code]));
+});
 
 const COLUMN_WIDTHS_KEY = 'wms_column_widths';
 
@@ -393,6 +415,19 @@ function getPreviewText(el) {
 }
 
 // -- Methods --
+function getTemplateTypeLabel(type) {
+  return moduleLabelMap.value[type] || TYPE_LABEL[type] || type;
+}
+
+async function fetchModules() {
+  try {
+    const result = await listBusinessModules();
+    modules.value = Array.isArray(result) ? result : [];
+  } catch {
+    modules.value = [];
+  }
+}
+
 async function fetchData() {
   loading.value = true;
   try {
@@ -643,6 +678,7 @@ watch(() => printState.value?.printAll, (isAll) => {
 
 // -- Lifecycle --
 onMounted(() => {
+  fetchModules();
   fetchData();
 });
 </script>

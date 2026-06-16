@@ -66,7 +66,267 @@ test("GET /api/v1/business-data/types returns configured business types", async 
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.code, 0);
-    assert.deepEqual(body.data.map((item) => item.code), ["LOCATION", "CONTAINER", "PRODUCT"]);
+    for (const code of ["LOCATION", "CONTAINER", "PRODUCT"]) {
+      assert.ok(body.data.some((item) => item.code === code));
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("GET /api/v1/business-modules returns enabled module configurations", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    for (const expected of [
+      { code: "LOCATION", templateLabel: "库位模板", dataLabel: "库位数据" },
+      { code: "CONTAINER", templateLabel: "容器模板", dataLabel: "容器数据" },
+      { code: "PRODUCT", templateLabel: "商品模板", dataLabel: "商品数据" },
+    ]) {
+      const item = body.data.find((row) => row.code === expected.code);
+      assert.ok(item);
+      assert.equal(item.templateLabel, expected.templateLabel);
+      assert.equal(item.dataLabel, expected.dataLabel);
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("POST /api/v1/business-modules creates custom module with fields", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const moduleCode = `TST_${suffix}`;
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: moduleCode,
+        name: "测试模块",
+        templateLabel: "测试模板",
+        dataLabel: "测试数据",
+        codeField: "testCode",
+        fields: [
+          { code: "testCode", name: "测试编码", type: "string", required: true, example: "T001", desc: "唯一编码", sortNo: 10 },
+          { code: "testName", name: "测试名称", type: "string", required: false, example: "名称", desc: "名称", sortNo: 20 },
+        ],
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    assert.equal(body.data.code, moduleCode);
+    assert.equal(body.data.storageMode, "json_table");
+
+    const fieldsResponse = await fetch(`http://127.0.0.1:${port}/api/v1/template/fields/${moduleCode}`);
+    const fieldsBody = await fieldsResponse.json();
+    assert.equal(fieldsResponse.status, 200);
+    assert.deepEqual(fieldsBody.data.map((item) => item.code), ["testCode", "testName"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("DELETE /api/v1/business-modules/:code disables custom module from module and business data lists", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const moduleCode = `DEL_${suffix}`;
+    await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: moduleCode,
+        name: "删除验证模块",
+        templateLabel: "删除验证模板",
+        dataLabel: "删除验证数据",
+        codeField: "deleteCode",
+        fields: [{ code: "deleteCode", name: "删除编码", type: "string", required: true, sortNo: 10 }],
+      }),
+    });
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules/${moduleCode}`, { method: "DELETE" });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    assert.equal(body.data.code, moduleCode);
+    assert.equal(body.data.deleted, true);
+
+    const modulesResponse = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`);
+    const modulesBody = await modulesResponse.json();
+    assert.equal(modulesResponse.status, 200);
+    assert.equal(modulesBody.data.some((item) => item.code === moduleCode), false);
+
+    const typesResponse = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/types`);
+    const typesBody = await typesResponse.json();
+    assert.equal(typesResponse.status, 200);
+    assert.equal(typesBody.data.some((item) => item.code === moduleCode), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("DELETE /api/v1/business-modules/:code rejects built-in module", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules/LOCATION`, { method: "DELETE" });
+    const body = await response.json();
+    assert.equal(response.status, 400);
+    assert.equal(body.code, 40000);
+    assert.match(body.message, /系统内置模块/);
+  } finally {
+    server.close();
+  }
+});
+
+test("PUT /api/v1/business-modules/:code/fields/:fieldCode updates field metadata", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const moduleCode = `TUF_${suffix}`;
+    await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: moduleCode,
+        name: "字段更新模块",
+        templateLabel: "字段更新模板",
+        dataLabel: "字段更新数据",
+        codeField: "itemCode",
+        fields: [{ code: "itemCode", name: "原名称", type: "string", required: true, sortNo: 10 }],
+      }),
+    });
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules/${moduleCode}/fields/itemCode`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "新名称", type: "string", required: true, example: "I001", desc: "更新说明", sortNo: 5 }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    assert.equal(body.data.name, "新名称");
+    assert.equal(body.data.sortNo, 5);
+  } finally {
+    server.close();
+  }
+});
+
+test("POST /api/v1/business-modules/:code/fields/:fieldCode/disable rejects referenced field", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules/LOCATION/fields/locationCode/disable`, { method: "POST" });
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(body.code, 40002);
+    assert.match(body.message, /已被模板引用/);
+  } finally {
+    server.close();
+  }
+});
+
+test("custom module business data uses business_data JSON storage", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const moduleCode = `BD_${suffix}`;
+    await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: moduleCode,
+        name: "业务数据模块",
+        templateLabel: "业务数据模板",
+        dataLabel: "业务数据",
+        codeField: "bizCode",
+        fields: [
+          { code: "bizCode", name: "业务编码", type: "string", required: true, sortNo: 10 },
+          { code: "bizName", name: "业务名称", type: "string", required: false, sortNo: 20 },
+        ],
+      }),
+    });
+
+    let response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bizType: moduleCode, fields: { bizCode: "B001", bizName: "第一条" } }),
+    });
+    let body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    assert.equal(body.data.businessCode, "B001");
+    assert.equal(body.data.fields.bizName, "第一条");
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/search?bizType=${moduleCode}&keyword=第一`);
+    body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.data.total, 1);
+    assert.equal(body.data.rows[0].fields.bizCode, "B001");
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/${moduleCode}/B001`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { bizCode: "B001", bizName: "已更新" } }),
+    });
+    body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.data.fields.bizName, "已更新");
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/${moduleCode}/B001`, { method: "DELETE" });
+    body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.data.deleted, true);
+  } finally {
+    server.close();
+  }
+});
+
+test("POST /api/v1/print/pdf rejects mismatched business type", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const templateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        templateCode: `TPL_PRINT_${suffix}`,
+        templateName: `打印校验-${suffix}`,
+        templateType: "LOCATION",
+        status: "enabled",
+        size: { width: 80, height: 40, unit: "mm", dpi: 203 },
+        elements: [
+          { id: "txt_location", type: "text", textKind: "field", x: 4, y: 4, width: 40, height: 8, bindField: "locationCode" },
+        ],
+      }),
+    });
+    const templateBody = await templateResponse.json();
+    assert.equal(templateResponse.status, 200);
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/print/pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        templateId: templateBody.data.id,
+        businessType: "CONTAINER",
+        rows: [{ locationCode: "L001" }],
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 400);
+    assert.equal(body.code, 40005);
+    assert.match(body.message, /业务类型与模板类型不一致/);
   } finally {
     server.close();
   }

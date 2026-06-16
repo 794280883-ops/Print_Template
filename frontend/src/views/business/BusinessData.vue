@@ -5,9 +5,13 @@
       <a-form layout="inline">
         <a-form-item label="数据类型">
           <a-select v-model:value="filters.type" style="width:140px;">
-            <a-select-option value="LOCATION">库位数据</a-select-option>
-            <a-select-option value="CONTAINER">容器数据</a-select-option>
-            <a-select-option value="PRODUCT">商品数据</a-select-option>
+            <a-select-option
+              v-for="module in moduleOptions"
+              :key="module.code"
+              :value="module.code"
+            >
+              {{ module.dataLabel || module.name || module.code }}
+            </a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="关键词">
@@ -65,7 +69,7 @@
     <!-- Edit Modal -->
     <a-modal v-model:open="editing" title="编辑业务数据" cancel-text="取消" ok-text="确认" @ok="handleEditSave" width="520px" :confirm-loading="saving">
       <a-form layout="vertical" v-if="editRecord">
-        <template v-for="f in FIELD_DICT[filters.type] || []" :key="f.code">
+        <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
             <a-select v-if="f.code === 'directionMark'" v-model:value="editFields[f.code]" allow-clear placeholder="请选择方向">
               <a-select-option value="">空</a-select-option>
@@ -81,7 +85,7 @@
     <!-- Create Modal -->
     <a-modal v-model:open="creating" title="新增业务数据" cancel-text="取消" ok-text="确认" @ok="handleCreateSave" width="520px" :confirm-loading="saving">
       <a-form layout="vertical">
-        <template v-for="f in FIELD_DICT[filters.type] || []" :key="f.code">
+        <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
             <a-select v-if="f.code === 'directionMark'" v-model:value="createFields[f.code]" allow-clear placeholder="请选择方向">
               <a-select-option value="">空</a-select-option>
@@ -177,7 +181,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons-vue';
 import { listBusinessData, deleteBusinessData, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
-import { listTemplates, getTemplate, downloadPrintPdf } from '../../api/templateApi.js';
+import { listTemplates, getTemplate, downloadPrintPdf, listFields } from '../../api/templateApi.js';
+import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { FIELD_DICT, TYPE_LABEL, PX_PER_MM } from '../../data/constants.js';
 
 const rows = ref([]);
@@ -202,6 +207,14 @@ const printCopies = ref(1);
 const printLoading = ref(false);
 const filters = reactive({ type: 'LOCATION', keyword: '', page: 1, pageSize: 20, sortField: 'locationCode', sortDir: 'ASC' });
 const total = ref(0);
+const modules = ref([]);
+const fieldsByType = ref({});
+
+const fallbackModules = [
+  { code: 'LOCATION', name: '库位', templateLabel: '库位模板', dataLabel: '库位数据', codeField: 'locationCode' },
+  { code: 'CONTAINER', name: '容器', templateLabel: '容器模板', dataLabel: '容器数据', codeField: 'containerCode' },
+  { code: 'PRODUCT', name: '商品', templateLabel: '商品模板', dataLabel: '商品数据', codeField: 'productCode' },
+];
 
 const rowSelection = computed(() => ({
   selectedRowKeys: selectedRowKeys.value,
@@ -224,31 +237,60 @@ const displayRows = computed(() => {
   }));
 });
 
-const codeFieldCode = computed(() => (FIELD_DICT[filters.type] || [])[0]?.code || '');
-const typeLabel = computed(() => ({ LOCATION: '库位', CONTAINER: '容器', PRODUCT: '商品' }[filters.type] || filters.type));
+const moduleOptions = computed(() => modules.value.length ? modules.value : fallbackModules);
+
+const currentModule = computed(() => moduleOptions.value.find((item) => item.code === filters.type) || null);
+
+const currentFields = computed(() => {
+  return (fieldsByType.value[filters.type] || FIELD_DICT[filters.type] || []).map((field) => ({
+    ...field,
+    required: !!field.required,
+  }));
+});
+
+const codeFieldCode = computed(() => currentModule.value?.codeField || currentFields.value[0]?.code || '');
+const typeLabel = computed(() => currentModule.value?.name || TYPE_LABEL[filters.type] || filters.type);
 
 const dynamicColumns = computed(() => {
   const base = [];
-  const fieldMap = {};
-  const fields = FIELD_DICT[filters.type] || [];
-  for (const f of fields) {
-    fieldMap[f.code] = f.name;
-  }
-  if (displayRows.value.length > 0) {
-    const first = displayRows.value[0];
-    const skipKeys = new Set(['id', 'fields', 'businessType', 'businessCode', 'updatedAt']);
-    for (const key of Object.keys(first)) {
-      if (skipKeys.has(key)) continue;
-      base.push({
-        title: fieldMap[key] || key, dataIndex: key, key, ellipsis: true, width: key === codeFieldCode.value ? 160 : 150,
-        sorter: true,
-        sortOrder: filters.sortField === key ? (filters.sortDir === 'ASC' ? 'ascend' : 'descend') : null,
-      });
-    }
+  for (const field of currentFields.value) {
+    base.push({
+      title: field.name || field.code,
+      dataIndex: field.code,
+      key: field.code,
+      ellipsis: true,
+      width: field.code === codeFieldCode.value ? 160 : 150,
+      sorter: true,
+      sortOrder: filters.sortField === field.code ? (filters.sortDir === 'ASC' ? 'ascend' : 'descend') : null,
+    });
   }
   base.push({ title: '操作', key: 'action', width: 80, fixed: 'right' });
   return base;
 });
+
+async function fetchModules() {
+  try {
+    const result = await listBusinessModules();
+    modules.value = Array.isArray(result) ? result : [];
+    if (!modules.value.some((item) => item.code === filters.type)) {
+      filters.type = modules.value[0]?.code || 'LOCATION';
+    }
+  } catch {
+    modules.value = [];
+  }
+}
+
+async function fetchFields(type) {
+  if (!type || fieldsByType.value[type]) return;
+  try {
+    fieldsByType.value = {
+      ...fieldsByType.value,
+      [type]: await listFields(type),
+    };
+  } catch {
+    if (!FIELD_DICT[type]) message.warning('字段配置加载失败');
+  }
+}
 
 async function fetchData() {
   loading.value = true;
@@ -284,14 +326,12 @@ function handleTableChange(pag, _filters, sorter) {
   fetchData();
 }
 function handleCreate() {
-  const fields = FIELD_DICT[filters.type] || [];
   createFields.value = {};
-  for (const f of fields) createFields.value[f.code] = '';
+  for (const f of currentFields.value) createFields.value[f.code] = '';
   creating.value = true;
 }
 async function handleCreateSave() {
-  const fields = FIELD_DICT[filters.type] || [];
-  const codeField = fields[0];
+  const codeField = currentFields.value.find((field) => field.code === codeFieldCode.value) || currentFields.value[0];
   if (codeField && !createFields.value[codeField.code]?.trim()) {
     message.error(`${codeField.name}不能为空`);
     return;
@@ -454,12 +494,14 @@ async function doPrintRecord() {
 function handleEdit(record) {
   editRecord.value = record;
   editFields.value = { ...(record.fields || {}) };
+  for (const field of currentFields.value) {
+    if (editFields.value[field.code] === undefined) editFields.value[field.code] = '';
+  }
   editing.value = true;
 }
 
 async function handleEditSave() {
-  const fields = FIELD_DICT[filters.type] || [];
-  const codeField = fields[0];
+  const codeField = currentFields.value.find((field) => field.code === codeFieldCode.value) || currentFields.value[0];
   if (codeField && !editFields.value[codeField.code]?.trim()) {
     message.error(`${codeField.name}不能为空`);
     return;
@@ -487,14 +529,20 @@ async function handleDelete(record) {
   }
 }
 
-watch(() => filters.type, () => {
+watch(() => filters.type, async () => {
   filters.page = 1;
-  const fields = FIELD_DICT[filters.type] || [];
-  filters.sortField = fields[0]?.code || 'businessCode';
+  await fetchFields(filters.type);
+  filters.sortField = codeFieldCode.value || currentFields.value[0]?.code || 'businessCode';
   filters.sortDir = 'ASC';
+  selectedRowKeys.value = [];
   fetchData();
 });
-onMounted(() => { fetchData(); });
+onMounted(async () => {
+  await fetchModules();
+  await fetchFields(filters.type);
+  filters.sortField = codeFieldCode.value || filters.sortField;
+  fetchData();
+});
 </script>
 
 <style scoped>

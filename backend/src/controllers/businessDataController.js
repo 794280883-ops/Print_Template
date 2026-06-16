@@ -1,8 +1,8 @@
 import * as businessDataService from "../services/businessDataService.js";
 import { appError, sendSuccess } from "../utils/response.js";
 
-export function types(req, res) {
-  sendSuccess(res, businessDataService.listBusinessTypes());
+export async function types(req, res) {
+  sendSuccess(res, await businessDataService.listBusinessTypes());
 }
 
 export async function warehouses(req, res) {
@@ -29,9 +29,9 @@ export async function remove(req, res) {
   sendSuccess(res, await businessDataService.deleteBusinessData(req.params.bizType, req.params.bizCode));
 }
 
-export function downloadTemplate(req, res) {
+export async function downloadTemplate(req, res) {
   const { bizType } = req.params;
-  const buffer = businessDataService.generateImportTemplate(bizType);
+  const buffer = await businessDataService.generateImportTemplate(bizType);
   const filename = encodeURIComponent(`${bizType}_导入模板.xlsx`);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
