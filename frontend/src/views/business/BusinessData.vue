@@ -487,8 +487,9 @@ async function doPrintRecord() {
   }
 }
 function handleEdit(record) {
-  editRecord.value = record;
-  editFields.value = { ...(record.fields || {}) };
+  const original = rows.value.find((r) => r.id === record.id) || record;
+  editRecord.value = original;
+  editFields.value = { ...(original.fields || {}) };
   for (const field of currentFields.value) {
     if (editFields.value[field.code] === undefined) editFields.value[field.code] = '';
   }
