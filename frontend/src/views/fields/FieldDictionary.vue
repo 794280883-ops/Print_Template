@@ -5,6 +5,7 @@
         <a-space>
           <a-button type="primary" @click="openModuleModal">新增模块</a-button>
           <a-button @click="openCreateFieldModal" :disabled="!activeType">新增字段</a-button>
+          <a-button @click="openEditModuleModal" :disabled="!activeModule">编辑模块</a-button>
           <a-popconfirm
             :title="`确认删除模块「${activeModule?.name || activeType}」?`"
             ok-text="确认"
@@ -56,15 +57,15 @@
 
     <a-modal
       v-model:open="moduleModalOpen"
-      title="新增模块"
+      :title="moduleEditing ? '编辑模块' : '新增模块'"
       cancel-text="取消"
       ok-text="确认"
       :confirm-loading="saving"
-      @ok="handleCreateModule"
+      @ok="handleSaveModule"
     >
       <a-form layout="vertical">
         <a-form-item label="模块编码" required>
-          <a-input v-model:value="moduleForm.code" placeholder="例如 PALLET" />
+          <a-input v-model:value="moduleForm.code" :disabled="moduleEditing" placeholder="例如 PALLET" />
         </a-form-item>
         <a-form-item label="模块名称" required>
           <a-input v-model:value="moduleForm.name" placeholder="例如 托盘" />
@@ -76,9 +77,9 @@
           <a-input v-model:value="moduleForm.dataLabel" placeholder="例如 托盘数据" />
         </a-form-item>
         <a-form-item label="主键字段编码" required>
-          <a-input v-model:value="moduleForm.codeField" placeholder="例如 palletCode" />
+          <a-input v-model:value="moduleForm.codeField" :disabled="moduleEditing" placeholder="例如 palletCode" />
         </a-form-item>
-        <a-form-item label="主键字段名称" required>
+        <a-form-item v-if="!moduleEditing" label="主键字段名称" required>
           <a-input v-model:value="moduleForm.codeFieldName" placeholder="例如 托盘编码" />
         </a-form-item>
       </a-form>
@@ -134,6 +135,7 @@ import {
   deleteBusinessModule,
   disableModuleField,
   listBusinessModules,
+  updateBusinessModule,
   updateModuleField,
 } from '../../api/businessModuleApi.js';
 import { listFields } from '../../api/templateApi.js';
@@ -148,6 +150,7 @@ const moduleModalOpen = ref(false);
 const fieldModalOpen = ref(false);
 const fieldEditing = ref(false);
 const fieldEditingCode = ref('');
+const moduleEditing = ref(false);
 
 const fallbackModules = [
   { code: 'LOCATION', name: '库位', templateLabel: '库位模板', dataLabel: '库位数据' },
@@ -233,6 +236,21 @@ function emptyFieldForm() {
 
 function openModuleModal() {
   moduleForm.value = emptyModuleForm();
+  moduleEditing.value = false;
+  moduleModalOpen.value = true;
+}
+
+function openEditModuleModal() {
+  if (!activeModule.value) return;
+  moduleEditing.value = true;
+  moduleForm.value = {
+    code: activeModule.value.code,
+    name: activeModule.value.name || '',
+    templateLabel: activeModule.value.templateLabel || '',
+    dataLabel: activeModule.value.dataLabel || '',
+    codeField: activeModule.value.codeField || '',
+    codeFieldName: '',
+  };
   moduleModalOpen.value = true;
 }
 
@@ -290,6 +308,37 @@ async function handleCreateModule() {
   } finally {
     saving.value = false;
   }
+}
+
+async function handleUpdateModule() {
+  const form = moduleForm.value;
+  if (!form.name.trim() || !form.templateLabel.trim() || !form.dataLabel.trim()) {
+    message.error('请填写模块名称、模板类型名称和业务数据名称');
+    return;
+  }
+  saving.value = true;
+  try {
+    const updated = await updateBusinessModule(form.code, {
+      name: form.name.trim(),
+      templateLabel: form.templateLabel.trim(),
+      dataLabel: form.dataLabel.trim(),
+    });
+    message.success('模块已更新');
+    moduleModalOpen.value = false;
+    await fetchModules();
+    activeType.value = updated.code;
+  } catch (error) {
+    message.error('模块更新失败：' + (error.message || ''));
+  } finally {
+    saving.value = false;
+  }
+}
+
+function handleSaveModule() {
+  if (moduleEditing.value) {
+    return handleUpdateModule();
+  }
+  return handleCreateModule();
 }
 
 async function handleSaveField() {

@@ -24,7 +24,7 @@
               :key="module.code"
               :value="module.code"
             >
-              {{ module.templateLabel || module.code }}
+              {{ module.name || module.code }}
             </a-select-option>
           </a-select>
         </a-form-item>
@@ -321,7 +321,7 @@ const tablePagination = computed(() => ({
 const moduleOptions = computed(() => modules.value.length ? modules.value : fallbackModules);
 
 const moduleLabelMap = computed(() => {
-  return Object.fromEntries(moduleOptions.value.map((item) => [item.code, item.templateLabel || item.name || item.code]));
+  return Object.fromEntries(moduleOptions.value.map((item) => [item.code, item.name || item.code]));
 });
 
 const COLUMN_WIDTHS_KEY = 'wms_column_widths';

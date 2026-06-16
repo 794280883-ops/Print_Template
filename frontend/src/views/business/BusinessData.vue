@@ -1,19 +1,14 @@
 <template>
   <div class="business-data">
-    <!-- Filter Card -->
     <a-card class="filter-card" size="small">
+      <a-tabs v-model:activeKey="filters.type" class="business-type-tabs">
+        <a-tab-pane
+          v-for="module in moduleOptions"
+          :key="module.code"
+          :tab="module.name || module.code"
+        />
+      </a-tabs>
       <a-form layout="inline">
-        <a-form-item label="数据类型">
-          <a-select v-model:value="filters.type" style="width:140px;">
-            <a-select-option
-              v-for="module in moduleOptions"
-              :key="module.code"
-              :value="module.code"
-            >
-              {{ module.dataLabel || module.name || module.code }}
-            </a-select-option>
-          </a-select>
-        </a-form-item>
         <a-form-item label="关键词">
           <a-input v-model:value="filters.keyword" placeholder="搜索..." allow-clear style="width:200px;" />
         </a-form-item>

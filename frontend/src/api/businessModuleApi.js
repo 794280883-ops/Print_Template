@@ -17,6 +17,13 @@ export function deleteBusinessModule(moduleCode) {
   });
 }
 
+export function updateBusinessModule(moduleCode, module) {
+  return request(`/business-modules/${encodeURIComponent(moduleCode)}`, {
+    method: "PUT",
+    body: JSON.stringify(module),
+  });
+}
+
 export function createModuleField(moduleCode, field) {
   return request(`/business-modules/${encodeURIComponent(moduleCode)}/fields`, {
     method: "POST",

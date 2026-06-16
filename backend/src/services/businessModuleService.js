@@ -55,6 +55,24 @@ export async function deleteModule(moduleCode) {
   return { code, deleted: affectedRows > 0 };
 }
 
+export async function updateModule(moduleCode, payload = {}) {
+  const code = String(moduleCode || "").trim().toUpperCase();
+  if (!code) throw appError("模块编码不能为空", 40000, 400);
+
+  const module = await businessModuleRepository.getModule(code);
+  if (!module) throw appError("模块不存在", 40400, 404);
+
+  const name = String(payload.name || "").trim();
+  const templateLabel = String(payload.templateLabel || "").trim();
+  const dataLabel = String(payload.dataLabel || "").trim();
+  if (!name) throw appError("模块名称不能为空", 40000, 400);
+  if (!templateLabel) throw appError("模板类型名称不能为空", 40000, 400);
+  if (!dataLabel) throw appError("业务数据名称不能为空", 40000, 400);
+
+  const updated = await businessModuleRepository.updateModule(code, { name, templateLabel, dataLabel });
+  return toDto(updated);
+}
+
 function toDto(row) {
   return {
     code: row.module_code,

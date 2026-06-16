@@ -49,3 +49,14 @@ export async function disableModule(moduleCode) {
   );
   return result.affectedRows;
 }
+
+export async function updateModule(moduleCode, module) {
+  const code = String(moduleCode || "").toUpperCase();
+  await pool.query(
+    `UPDATE print_business_module
+     SET module_name = ?, template_label = ?, data_label = ?
+     WHERE module_code = ?`,
+    [module.name, module.templateLabel, module.dataLabel, code],
+  );
+  return getModule(code);
+}

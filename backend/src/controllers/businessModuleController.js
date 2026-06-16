@@ -10,6 +10,10 @@ export async function createModule(req, res) {
   sendSuccess(res, await businessModuleService.createModule(req.body));
 }
 
+export async function updateModule(req, res) {
+  sendSuccess(res, await businessModuleService.updateModule(req.params.moduleCode, req.body));
+}
+
 export async function deleteModule(req, res) {
   sendSuccess(res, await businessModuleService.deleteModule(req.params.moduleCode));
 }

@@ -187,6 +187,52 @@ test("DELETE /api/v1/business-modules/:code rejects built-in module", async () =
   }
 });
 
+test("PUT /api/v1/business-modules/:code updates module display names", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const moduleCode = `REN_${suffix}`;
+    await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: moduleCode,
+        name: "原模块",
+        templateLabel: "原模板类型",
+        dataLabel: "原业务数据",
+        codeField: "renameCode",
+        fields: [{ code: "renameCode", name: "重命名编码", type: "string", required: true, sortNo: 10 }],
+      }),
+    });
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules/${moduleCode}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "新模块",
+        templateLabel: "新模板类型",
+        dataLabel: "新业务数据",
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    assert.equal(body.data.name, "新模块");
+    assert.equal(body.data.templateLabel, "新模板类型");
+    assert.equal(body.data.dataLabel, "新业务数据");
+
+    const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`);
+    const listBody = await listResponse.json();
+    const item = listBody.data.find((row) => row.code === moduleCode);
+    assert.equal(item.name, "新模块");
+    assert.equal(item.templateLabel, "新模板类型");
+    assert.equal(item.dataLabel, "新业务数据");
+  } finally {
+    server.close();
+  }
+});
+
 test("PUT /api/v1/business-modules/:code/fields/:fieldCode updates field metadata", async () => {
   const server = await listen(createApp());
   try {
