@@ -40,15 +40,25 @@
               {{ record.required ? '必填' : '选填' }}
             </a-tag>
           </template>
+          <template v-else-if="column.key === 'status'">
+            <a-tag :color="record.enabled !== false ? 'green' : 'default'">
+              {{ record.enabled !== false ? '启用' : '停用' }}
+            </a-tag>
+          </template>
           <template v-else-if="column.key === 'example'">
             <code>{{ record.example }}</code>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
               <a-button size="small" type="link" @click="openEditFieldModal(record)">编辑</a-button>
-              <a-popconfirm title="确认停用该字段?" @confirm="handleDisableField(record)">
-                <a-button size="small" danger type="link">停用</a-button>
-              </a-popconfirm>
+              <template v-if="record.enabled !== false">
+                <a-popconfirm title="确认停用该字段?" @confirm="handleDisableField(record)">
+                  <a-button size="small" danger type="link">停用</a-button>
+                </a-popconfirm>
+              </template>
+              <template v-else>
+                <a-button size="small" type="link" @click="handleEnableField(record)">启用</a-button>
+              </template>
             </a-space>
           </template>
         </template>
@@ -134,6 +144,7 @@ import {
   createModuleField,
   deleteBusinessModule,
   disableModuleField,
+  enableModuleField,
   listBusinessModules,
   updateBusinessModule,
   updateModuleField,
@@ -159,13 +170,14 @@ const fallbackModules = [
 ];
 
 const columns = [
-  { title: '中文名称', dataIndex: 'name', key: 'name', width: 160 },
-  { title: '字段编码', dataIndex: 'code', key: 'code', width: 200 },
-  { title: '类型', dataIndex: 'type', key: 'type', width: 80 },
-  { title: '必填', dataIndex: 'required', key: 'required', width: 80 },
-  { title: '示例值', key: 'example', width: 200 },
+  { title: '中文名称', dataIndex: 'name', key: 'name', width: 140 },
+  { title: '字段编码', dataIndex: 'code', key: 'code', width: 180 },
+  { title: '类型', dataIndex: 'type', key: 'type', width: 70 },
+  { title: '必填', dataIndex: 'required', key: 'required', width: 70 },
+  { title: '状态', key: 'status', width: 70 },
+  { title: '示例值', key: 'example', width: 180 },
   { title: '说明', dataIndex: 'desc', key: 'desc', ellipsis: true },
-  { title: '操作', key: 'action', width: 120, fixed: 'right' },
+  { title: '操作', key: 'action', width: 140, fixed: 'right' },
 ];
 
 const moduleForm = ref(emptyModuleForm());
@@ -382,6 +394,19 @@ async function handleDisableField(record) {
     await fetchFields(activeType.value);
   } catch (error) {
     message.error('字段停用失败：' + (error.message || ''));
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function handleEnableField(record) {
+  saving.value = true;
+  try {
+    await enableModuleField(activeType.value, record.code);
+    message.success('字段已启用');
+    await fetchFields(activeType.value);
+  } catch (error) {
+    message.error('字段启用失败：' + (error.message || ''));
   } finally {
     saving.value = false;
   }

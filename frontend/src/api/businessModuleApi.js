@@ -43,3 +43,9 @@ export function disableModuleField(moduleCode, fieldCode) {
     method: "POST",
   });
 }
+
+export function enableModuleField(moduleCode, fieldCode) {
+  return request(`/business-modules/${encodeURIComponent(moduleCode)}/fields/${encodeURIComponent(fieldCode)}/enable`, {
+    method: "POST",
+  });
+}

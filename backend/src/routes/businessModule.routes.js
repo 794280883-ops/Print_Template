@@ -11,3 +11,4 @@ businessModuleRouter.delete("/business-modules/:moduleCode", asyncHandler(busine
 businessModuleRouter.post("/business-modules/:templateType/fields", asyncHandler(businessModuleController.createField));
 businessModuleRouter.put("/business-modules/:templateType/fields/:fieldCode", asyncHandler(businessModuleController.updateField));
 businessModuleRouter.post("/business-modules/:templateType/fields/:fieldCode/disable", asyncHandler(businessModuleController.disableField));
+businessModuleRouter.post("/business-modules/:templateType/fields/:fieldCode/enable", asyncHandler(businessModuleController.enableField));

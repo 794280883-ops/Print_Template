@@ -8,8 +8,15 @@ export async function listFields(templateType) {
 
 export async function createField(templateType, payload = {}) {
   const field = normalizeField(payload, { requireCode: true });
-  const created = await fieldRepository.createField(templateType, field);
-  return toDto(created);
+  try {
+    const created = await fieldRepository.createField(templateType, field);
+    return toDto(created);
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY") {
+      throw appError(`字段编码「${field.code}」已存在，请更换编码或启用已停用的字段`, 40001, 409);
+    }
+    throw error;
+  }
 }
 
 export async function updateField(templateType, fieldCode, payload = {}) {
@@ -25,6 +32,12 @@ export async function disableField(templateType, fieldCode) {
   const affectedRows = await fieldRepository.disableField(templateType, fieldCode);
   if (!affectedRows) throw appError("字段不存在", 40400, 404);
   return { disabled: true };
+}
+
+export async function enableField(templateType, fieldCode) {
+  const affectedRows = await fieldRepository.enableField(templateType, fieldCode);
+  if (!affectedRows) throw appError("字段不存在", 40400, 404);
+  return { enabled: true };
 }
 
 export function normalizeField(payload = {}, { requireCode } = {}) {
@@ -58,5 +71,6 @@ function toDto(row) {
     required: Boolean(row.is_required),
     desc: row.description,
     sortNo: Number(row.sort_no || 0),
+    enabled: row.enabled !== 0,
   };
 }

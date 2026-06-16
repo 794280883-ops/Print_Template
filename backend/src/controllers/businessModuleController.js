@@ -29,3 +29,7 @@ export async function updateField(req, res) {
 export async function disableField(req, res) {
   sendSuccess(res, await fieldService.disableField(req.params.templateType, req.params.fieldCode));
 }
+
+export async function enableField(req, res) {
+  sendSuccess(res, await fieldService.enableField(req.params.templateType, req.params.fieldCode));
+}
