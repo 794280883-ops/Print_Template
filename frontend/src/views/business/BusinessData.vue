@@ -9,8 +9,8 @@
         />
       </a-tabs>
       <a-form layout="inline">
-        <a-form-item label="关键词">
-          <a-input v-model:value="filters.keyword" placeholder="搜索..." allow-clear style="width:200px;" />
+        <a-form-item label="业务编码">
+          <a-input v-model:value="filters.keyword" placeholder="请输入业务编码" allow-clear style="width:200px;" />
         </a-form-item>
         <a-form-item>
           <a-button type="primary" @click="handleSearch">

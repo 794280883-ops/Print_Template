@@ -66,8 +66,8 @@ open -a "DataGrip" "jdbc:mysql://127.0.0.1:3306/wms_print_template"
 
 ### 公网访问
 
-- 地址：http://47.113.118.74
-- 健康检查：http://47.113.118.74/api/v1/health
+- 地址：https://customprint.icu
+- 健康检查：https://customprint.icu/api/v1/health
 
 ## 目录结构
 
@@ -160,7 +160,7 @@ git status --short --branch
 
 ## 后续计划
 
-- 域名备案和 HTTPS
+- ~~域名备案和 HTTPS~~ ✅ 已配置 Let's Encrypt 证书，customprint.icu
 - 登录鉴权和权限控制
 - 操作日志审计增强
 - 数据备份策略

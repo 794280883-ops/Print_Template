@@ -28,5 +28,5 @@ curl -fsS http://127.0.0.1/api/v1/health
 
 echo
 echo "Deployment finished:"
-echo "  http://$SERVER_HOST"
-echo "  http://$SERVER_HOST/api/v1/health"
+echo "  https://customprint.icu"
+echo "  https://customprint.icu/api/v1/health"
