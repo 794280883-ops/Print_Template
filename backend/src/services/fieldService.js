@@ -40,6 +40,14 @@ export async function enableField(templateType, fieldCode) {
   return { enabled: true };
 }
 
+export async function deleteField(templateType, fieldCode) {
+  const references = await fieldRepository.countFieldReferences(templateType, fieldCode);
+  if (references > 0) throw appError("字段已被模板引用，不能删除", 40002, 409, { references });
+  const affectedRows = await fieldRepository.deleteField(templateType, fieldCode);
+  if (!affectedRows) throw appError("字段不存在", 40400, 404);
+  return { deleted: true };
+}
+
 export function normalizeField(payload = {}, { requireCode } = {}) {
   const code = String(payload.code || "").trim();
   const name = String(payload.name || "").trim();

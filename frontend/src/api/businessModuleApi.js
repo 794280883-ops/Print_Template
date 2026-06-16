@@ -49,3 +49,9 @@ export function enableModuleField(moduleCode, fieldCode) {
     method: "POST",
   });
 }
+
+export function deleteModuleField(moduleCode, fieldCode) {
+  return request(`/business-modules/${encodeURIComponent(moduleCode)}/fields/${encodeURIComponent(fieldCode)}`, {
+    method: "DELETE",
+  });
+}

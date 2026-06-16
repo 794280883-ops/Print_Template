@@ -90,3 +90,12 @@ export async function enableField(templateType, fieldCode) {
   );
   return result.affectedRows;
 }
+
+export async function deleteField(templateType, fieldCode) {
+  const [result] = await pool.query(
+    `DELETE FROM print_field_dict
+     WHERE template_type = ? AND field_code = ?`,
+    [String(templateType || "").toUpperCase(), fieldCode],
+  );
+  return result.affectedRows;
+}

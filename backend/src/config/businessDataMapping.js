@@ -7,7 +7,7 @@ export const businessDataMappings = {
     typeValue: null,
     bizCodeColumn: "location_code",
     updatedAtColumn: "updated_at",
-    fieldsJsonColumn: null,
+    fieldsJsonColumn: "extra_data",
     warehouse: { source: "column", column: "region_warehouse_code" },
     keyword: [
       { source: "column", column: "location_code" },
@@ -32,7 +32,7 @@ export const businessDataMappings = {
     typeValue: null,
     bizCodeColumn: "container_code",
     updatedAtColumn: "updated_at",
-    fieldsJsonColumn: null,
+    fieldsJsonColumn: "extra_data",
     warehouse: { source: "column", column: "region_warehouse_code" },
     keyword: [
       { source: "column", column: "container_code" },
@@ -51,7 +51,7 @@ export const businessDataMappings = {
     typeValue: null,
     bizCodeColumn: "sku",
     updatedAtColumn: "updated_at",
-    fieldsJsonColumn: null,
+    fieldsJsonColumn: "extra_data",
     warehouse: null,
     keyword: [
       { source: "column", column: "sku" },

@@ -77,7 +77,24 @@ export async function deleteBusinessData(bizType, bizCode) {
 async function getRequiredMapping(bizType) {
   const code = String(bizType || "").toUpperCase();
   const mapping = getBusinessDataMapping(code);
-  if (mapping) return mapping;
+  if (mapping) {
+    // Merge dynamic fields from field_dict that are not in the hardcoded mapping
+    const fieldRows = await fieldRepository.listFields(code);
+    const existingCodes = new Set(mapping.fields.map((f) => f.code));
+    const extraFields = fieldRows
+      .filter((row) => row.enabled && !existingCodes.has(row.field_code))
+      .map((row) => ({
+        code: row.field_code,
+        name: row.field_name,
+        source: "json",
+        path: `$.${row.field_code}`,
+        required: Boolean(row.is_required),
+      }));
+    if (extraFields.length > 0) {
+      return { ...mapping, fields: [...mapping.fields, ...extraFields] };
+    }
+    return mapping;
+  }
 
   const module = await businessModuleRepository.getModule(code);
   if (!module || !module.enabled) throw appError(`业务模块不存在或已停用：${bizType}`, 40000, 400);

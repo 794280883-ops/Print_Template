@@ -59,6 +59,9 @@
               <template v-else>
                 <a-button size="small" type="link" @click="handleEnableField(record)">启用</a-button>
               </template>
+              <a-popconfirm title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
+                <a-button size="small" danger type="link">删除</a-button>
+              </a-popconfirm>
             </a-space>
           </template>
         </template>
@@ -143,6 +146,7 @@ import {
   createBusinessModule,
   createModuleField,
   deleteBusinessModule,
+  deleteModuleField,
   disableModuleField,
   enableModuleField,
   listBusinessModules,
@@ -407,6 +411,19 @@ async function handleEnableField(record) {
     await fetchFields(activeType.value);
   } catch (error) {
     message.error('字段启用失败：' + (error.message || ''));
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function handleDeleteField(record) {
+  saving.value = true;
+  try {
+    await deleteModuleField(activeType.value, record.code);
+    message.success('字段已删除');
+    await fetchFields(activeType.value);
+  } catch (error) {
+    message.error('字段删除失败：' + (error.message || ''));
   } finally {
     saving.value = false;
   }

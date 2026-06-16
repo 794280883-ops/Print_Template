@@ -57,9 +57,16 @@ export async function create(mapping, fields = {}) {
   if (mapping.storageMode === "json_table") return createJson(mapping, fields);
   const insert = buildWrite(mapping, fields);
   const table = quoteIdentifier(mapping.table);
+  let columns = insert.columns.join(", ");
+  let placeholders = insert.placeholders.join(", ");
+  if (insert.jsonSetClause) {
+    const jsonCol = quoteIdentifier(mapping.fieldsJsonColumn);
+    columns += `, ${jsonCol}`;
+    placeholders += ", ?";
+  }
   await pool.query(
-    `INSERT INTO ${table} (${insert.columns.join(", ")})
-     VALUES (${insert.placeholders.join(", ")})`,
+    `INSERT INTO ${table} (${columns})
+     VALUES (${placeholders})`,
     insert.values,
   );
   return getDetail(mapping, fields[bizFieldCode(mapping)]);
@@ -69,9 +76,13 @@ export async function update(mapping, bizCode, fields = {}) {
   if (mapping.storageMode === "json_table") return updateJson(mapping, bizCode, fields);
   const write = buildWrite(mapping, fields);
   const table = quoteIdentifier(mapping.table);
+  let setClauses = write.columns.map((column) => `${column} = ?`);
+  if (write.jsonSetClause) {
+    setClauses.push(write.jsonSetClause);
+  }
   await pool.query(
     `UPDATE ${table}
-     SET ${write.columns.map((column) => `${column} = ?`).join(", ")}
+     SET ${setClauses.join(", ")}
      WHERE ${quoteIdentifier(mapping.bizCodeColumn)} = ?`,
     [...write.values, bizCode],
   );
@@ -152,13 +163,36 @@ function buildWrite(mapping, fields) {
   const columns = [];
   const placeholders = [];
   const values = [];
+  let jsonSetClause = "";
+
   for (const field of mapping.fields) {
-    if (field.source !== "column") continue;
-    columns.push(quoteIdentifier(field.column));
-    placeholders.push("?");
-    values.push(toStorageValue(field, fields[field.code]));
+    if (field.source === "column") {
+      columns.push(quoteIdentifier(field.column));
+      placeholders.push("?");
+      values.push(toStorageValue(field, fields[field.code]));
+    }
   }
-  return { columns, placeholders, values };
+
+  // Collect JSON fields for dynamic storage
+  const jsonCol = mapping.fieldsJsonColumn;
+  if (jsonCol) {
+    const jsonData = {};
+    for (const field of mapping.fields) {
+      if (field.source !== "json") continue;
+      const key = (field.path || "").replace(/^\$\./, "") || field.code;
+      const val = toStorageValue(field, fields[field.code]);
+      if (val !== null && val !== undefined && val !== "") {
+        jsonData[key] = val;
+      }
+    }
+    if (Object.keys(jsonData).length > 0) {
+      const col = quoteIdentifier(jsonCol);
+      jsonSetClause = `${col} = JSON_MERGE_PATCH(COALESCE(${col}, '{}'), ?)`;
+      values.push(JSON.stringify(jsonData));
+    }
+  }
+
+  return { columns, placeholders, values, jsonSetClause };
 }
 
 function bizFieldCode(mapping) {
