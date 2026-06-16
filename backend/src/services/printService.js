@@ -13,6 +13,7 @@ export async function generatePdf(payload) {
   // Fetch the full template with elements
   const template = await getTemplate(templateId);
   assertTemplateEnabled(template);
+  assertBusinessTypeMatchesTemplate(template, payload.businessType);
 
   // Generate PDF
   const pdfBuffer = await generateTemplatePdf(template, rows, { copies });
@@ -40,5 +41,12 @@ export async function generatePdf(payload) {
 function assertTemplateEnabled(template) {
   if (template.status !== "enabled") {
     throw appError("模板未启用，不能打印", 40004, 400);
+  }
+}
+
+function assertBusinessTypeMatchesTemplate(template, businessType) {
+  if (!businessType) return;
+  if (String(businessType).toUpperCase() !== String(template.templateType).toUpperCase()) {
+    throw appError("业务类型与模板类型不一致，不能打印", 40005, 400);
   }
 }

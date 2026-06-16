@@ -50,3 +50,17 @@ test("validateTemplateDsl rejects fields outside dictionary", () => {
   assert.equal(result.canPublish, false);
   assert.match(result.errors[0].message, /不存在于当前模板类型模版字段/);
 });
+
+test("validateTemplateDsl accepts custom template type when field dictionary matches", () => {
+  const result = validateTemplateDsl({
+    templateName: "自定义标签",
+    templateType: "PALLET",
+    size: { width: 80, height: 40 },
+    elements: [
+      { id: "text_pallet_code", type: "text", textKind: "field", x: 4, y: 4, width: 40, height: 8, bindField: "palletCode" },
+    ],
+  }, [{ field_code: "palletCode" }]);
+
+  assert.equal(result.canPublish, true);
+  assert.deepEqual(result.errors, []);
+});

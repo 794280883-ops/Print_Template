@@ -249,10 +249,9 @@ import {
   UndoOutlined, RedoOutlined, SaveOutlined,
   EyeOutlined, ArrowLeftOutlined, DeleteOutlined,
 } from '@ant-design/icons-vue';
-import { getTemplate, updateTemplate } from '../../api/templateApi.js';
+import { getTemplate, updateTemplate, listFields } from '../../api/templateApi.js';
 import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
 import { validateTemplateDsl } from '../../services/validationService.js';
-import { sampleByType } from '../../services/templateDslService.js';
 import { getPrintableTemplate } from '../../services/printRotationService.js';
 
 const route = useRoute();
@@ -272,6 +271,7 @@ const previewVisible = ref(false);
 const templateWidth = ref(100);
 const templateHeight = ref(80);
 const templateName = ref('');
+const fieldsByType = ref({});
 
 // Canvas refs
 const canvasRef = ref(null);
@@ -308,7 +308,7 @@ const selectedElement = computed(() => {
 
 const currentFields = computed(() => {
   if (!template.value) return [];
-  return FIELD_DICT[template.value.templateType] || [];
+  return fieldsByType.value[template.value.templateType] || FIELD_DICT[template.value.templateType] || [];
 });
 
 const canvasStyle = computed(() => {
@@ -430,8 +430,7 @@ function getTextDisplay(el) {
   if (el.type !== 'text') return '';
   if (el.textKind === 'field') {
     if (el.bindField === 'directionMark') return '↑↓';
-    const fields = FIELD_DICT[template.value?.templateType] || [];
-    const f = fields.find(x => x.code === el.bindField);
+    const f = currentFields.value.find(x => x.code === el.bindField);
     return f ? f.name : (el.bindField || '未绑定');
   }
   return el.text ?? '静态文本';
@@ -469,7 +468,7 @@ function runValidation() {
     message.warning('模板未加载，请先选择模板');
     return;
   }
-  validation.value = validateTemplateDsl(template.value);
+  validation.value = validateTemplateDsl(template.value, currentFields.value);
   const { errors, warnings, tips } = validation.value;
   if (errors.length) {
     message.error(`校验未通过：${errors.length} 个错误，${warnings.length} 个警告`);
@@ -677,7 +676,7 @@ function zoomOut() {
 // ── Save / Preview ──
 async function handleSave() {
   if (!template.value) return;
-  validation.value = validateTemplateDsl(template.value);
+  validation.value = validateTemplateDsl(template.value, currentFields.value);
   const { errors, warnings } = validation.value;
   if (errors.length || warnings.length) {
     message.error(`校验未通过：${errors.length} 个错误，${warnings.length} 个警告，请修复后再保存`);
@@ -759,6 +758,7 @@ onMounted(async () => {
     const id = route.params.id;
     const tpl = await getTemplate(id);
     template.value = tpl;
+    await fetchFields(tpl.templateType);
     templateWidth.value = tpl.size.width;
     templateHeight.value = tpl.size.height;
     if (tpl.elements?.length) selectedElementId.value = tpl.elements[0].id;
@@ -769,6 +769,18 @@ onMounted(async () => {
   }
   document.addEventListener('keydown', handleKeyDown);
 });
+
+async function fetchFields(templateType) {
+  if (!templateType || fieldsByType.value[templateType]) return;
+  try {
+    fieldsByType.value = {
+      ...fieldsByType.value,
+      [templateType]: await listFields(templateType),
+    };
+  } catch {
+    if (!FIELD_DICT[templateType]) message.warning('模板字段加载失败');
+  }
+}
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown);

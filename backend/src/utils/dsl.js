@@ -70,7 +70,7 @@ export function validateTemplateDsl(template, fieldRows = []) {
   const fieldCodes = new Set(fieldRows.map((field) => field.field_code));
 
   if (!String(template.templateName || "").trim()) errors.push({ message: "模板名称为空" });
-  if (!["LOCATION", "CONTAINER", "PRODUCT"].includes(template.templateType)) errors.push({ message: "模板类型不在 LOCATION / CONTAINER / PRODUCT 中" });
+  if (!String(template.templateType || "").trim()) errors.push({ message: "模板类型为空" });
   if (Number(template.size?.width) <= 0 || Number(template.size?.height) <= 0) errors.push({ message: "尺寸宽高必须大于 0" });
   if (![0, 90, 180, 270].includes(Number(template.printRotation || 0))) errors.push({ message: "打印旋转角度必须为 0/90/180/270" });
   if (!Array.isArray(template.elements) || !template.elements.length) errors.push({ message: "画布内没有元素" });

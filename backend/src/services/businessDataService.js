@@ -1,24 +1,27 @@
 import { getBusinessDataMapping, listBusinessTypeConfigs } from "../config/businessDataMapping.js";
+import * as businessModuleRepository from "../repositories/businessModuleRepository.js";
 import * as businessDataRepo from "../repositories/businessDataRepository.js";
+import * as fieldRepository from "../repositories/fieldRepository.js";
 import { appError } from "../utils/response.js";
 import XLSX from "xlsx";
 
-export function listBusinessTypes() {
-  return listBusinessTypeConfigs().map((item) => ({
-    code: item.code,
-    label: item.label,
-    fields: item.fields.map(({ code, name }) => ({ code, name })),
+export async function listBusinessTypes() {
+  const modules = await businessModuleRepository.listEnabledModules();
+  return modules.map((item) => ({
+    code: item.module_code,
+    label: item.data_label,
+    fields: [],
   }));
 }
 
 export async function listWarehouses(query = {}) {
-  const mapping = query.bizType ? getRequiredMapping(query.bizType) : null;
+  const mapping = query.bizType ? await getRequiredMapping(query.bizType) : null;
   const mappings = mapping ? [mapping] : listBusinessTypeConfigs();
   return businessDataRepo.listWarehouses(mappings);
 }
 
 export async function searchBusinessData(query = {}) {
-  const mapping = getRequiredMapping(query.bizType || query.type);
+  const mapping = await getRequiredMapping(query.bizType || query.type);
   return businessDataRepo.search(mapping, {
     keyword: String(query.keyword || "").trim(),
     warehouseCode: String(query.warehouseCode || "").trim(),
@@ -30,7 +33,7 @@ export async function searchBusinessData(query = {}) {
 }
 
 export async function getBusinessDataDetail(bizType, bizCode) {
-  const mapping = getRequiredMapping(bizType);
+  const mapping = await getRequiredMapping(bizType);
   const code = String(bizCode || "").trim();
   if (!code) throw appError("缺少业务编码", 40000, 400);
   const row = await businessDataRepo.getDetail(mapping, code);
@@ -39,7 +42,7 @@ export async function getBusinessDataDetail(bizType, bizCode) {
 }
 
 export async function createBusinessData(payload = {}) {
-  const mapping = getRequiredMapping(payload.bizType || payload.type);
+  const mapping = await getRequiredMapping(payload.bizType || payload.type);
   const fields = normalizeFields(mapping, payload.fields);
   try {
     return await businessDataRepo.create(mapping, fields);
@@ -49,7 +52,7 @@ export async function createBusinessData(payload = {}) {
 }
 
 export async function updateBusinessData(bizType, bizCode, payload = {}) {
-  const mapping = getRequiredMapping(bizType);
+  const mapping = await getRequiredMapping(bizType);
   const code = String(bizCode || "").trim();
   if (!code) throw appError("缺少业务编码", 40000, 400);
   const exists = await businessDataRepo.getDetail(mapping, code);
@@ -63,7 +66,7 @@ export async function updateBusinessData(bizType, bizCode, payload = {}) {
 }
 
 export async function deleteBusinessData(bizType, bizCode) {
-  const mapping = getRequiredMapping(bizType);
+  const mapping = await getRequiredMapping(bizType);
   const code = String(bizCode || "").trim();
   if (!code) throw appError("缺少业务编码", 40000, 400);
   const affectedRows = await businessDataRepo.remove(mapping, code);
@@ -71,10 +74,38 @@ export async function deleteBusinessData(bizType, bizCode) {
   return { deleted: true };
 }
 
-function getRequiredMapping(bizType) {
-  const mapping = getBusinessDataMapping(bizType);
-  if (!mapping) throw appError(`无效的业务类型：${bizType}，仅支持 LOCATION / CONTAINER / PRODUCT`, 40000, 400);
-  return mapping;
+async function getRequiredMapping(bizType) {
+  const code = String(bizType || "").toUpperCase();
+  const mapping = getBusinessDataMapping(code);
+  if (mapping) return mapping;
+
+  const module = await businessModuleRepository.getModule(code);
+  if (!module || !module.enabled) throw appError(`业务模块不存在或已停用：${bizType}`, 40000, 400);
+
+  const fieldRows = await fieldRepository.listFields(code);
+  const fields = fieldRows.map((row) => ({
+    code: row.field_code,
+    name: row.field_name,
+    source: "json",
+    path: `$.${row.field_code}`,
+    required: Boolean(row.is_required),
+  }));
+
+  return {
+    code: module.module_code,
+    label: module.data_label,
+    table: "business_data",
+    typeColumn: "business_type",
+    typeValue: module.module_code,
+    bizCodeColumn: "business_code",
+    codeField: module.code_field,
+    updatedAtColumn: "updated_at",
+    fieldsJsonColumn: "business_data",
+    storageMode: "json_table",
+    warehouse: null,
+    keyword: fields.map((field) => ({ source: "json", path: field.path })),
+    fields,
+  };
 }
 
 function normalizeFields(mapping, fields = {}) {
@@ -83,7 +114,9 @@ function normalizeFields(mapping, fields = {}) {
     const value = String(fields[field.code] ?? "").trim();
     result[field.code] = value;
   }
-  const codeField = mapping.fields.find((field) => field.column === mapping.bizCodeColumn);
+  const codeField = mapping.storageMode === "json_table"
+    ? mapping.fields.find((field) => field.code === mapping.codeField)
+    : mapping.fields.find((field) => field.column === mapping.bizCodeColumn);
   if (!codeField || !result[codeField.code]) throw appError(`${codeField?.name || "业务编码"}必填`, 40000, 400);
   for (const field of mapping.fields) {
     if (field.required && !result[field.code]) throw appError(`${field.name}必填`, 40000, 400);
@@ -125,8 +158,8 @@ function friendlyImportError(err, excelRow, codeFieldName, bizCode) {
   return `第${excelRow}行${label}导入失败：${err.message || "未知错误"}`;
 }
 
-export function generateImportTemplate(bizType) {
-  const mapping = getRequiredMapping(bizType);
+export async function generateImportTemplate(bizType) {
+  const mapping = await getRequiredMapping(bizType);
 
   // 表头使用字段中文名，列为 mapping.fields 的全量字段
   const headers = mapping.fields.map((f) => f.name);
@@ -153,7 +186,7 @@ export function generateImportTemplate(bizType) {
 }
 
 export async function importBusinessData(bizType, fileBuffer) {
-  const mapping = getRequiredMapping(bizType);
+  const mapping = await getRequiredMapping(bizType);
   const workbook = XLSX.read(fileBuffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw appError("Excel 文件中没有工作表", 40000, 400);
@@ -171,13 +204,13 @@ export async function importBusinessData(bizType, fileBuffer) {
     colFieldMap.push(field || null);
   }
 
-  const codeColumnIndex = colFieldMap.findIndex((f) => f && f.column === mapping.bizCodeColumn);
+  const codeColumnIndex = colFieldMap.findIndex((f) => f && isCodeField(mapping, f));
   if (codeColumnIndex < 0) {
-    const codeField = mapping.fields.find((f) => f.column === mapping.bizCodeColumn);
+    const codeField = mapping.fields.find((f) => isCodeField(mapping, f));
     throw appError(`Excel 表头中未找到"${codeField?.name || "编码"}"列`, 40000, 400);
   }
 
-  const codeFieldName = mapping.fields.find((f) => f.column === mapping.bizCodeColumn)?.name || "编码";
+  const codeFieldName = mapping.fields.find((f) => isCodeField(mapping, f))?.name || "编码";
   const results = { total: 0, success: 0, errors: [] };
 
   for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
@@ -210,4 +243,9 @@ export async function importBusinessData(bizType, fileBuffer) {
   }
 
   return results;
+}
+
+function isCodeField(mapping, field) {
+  if (mapping.storageMode === "json_table") return field.code === mapping.codeField;
+  return field.column === mapping.bizCodeColumn;
 }
