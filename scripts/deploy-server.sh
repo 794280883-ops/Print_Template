@@ -21,9 +21,9 @@ cd '$SERVER_DIR'
 git fetch origin '$BRANCH'
 git checkout '$BRANCH'
 git pull --ff-only origin '$BRANCH'
-docker compose --env-file .env.production up -d --build
-docker compose --env-file .env.production ps
-curl -fsS http://127.0.0.1/api/v1/health
+docker compose up -d --build
+docker compose ps
+curl -fsSk https://127.0.0.1/api/v1/health
 "
 
 echo
