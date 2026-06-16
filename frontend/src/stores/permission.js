@@ -35,7 +35,6 @@ export const usePermissionStore = defineStore('permission', () => {
   const user = ref(saved?.user || null);
   const roles = ref(saved?.roles || []);
   const permissions = ref(saved?.permissions || []);
-  const menus = ref([]);
 
   // -- Getters --
   const hasUser = computed(() => !!user.value);
@@ -63,8 +62,6 @@ export const usePermissionStore = defineStore('permission', () => {
     };
     roles.value = ['admin'];
     permissions.value = [...ALL_PERMISSIONS];
-    const savedMenus = localStorage.getItem('wms_menus');
-    menus.value = savedMenus ? JSON.parse(savedMenus) : [];
     persist();
   }
 
@@ -72,18 +69,12 @@ export const usePermissionStore = defineStore('permission', () => {
     user.value = null;
     roles.value = [];
     permissions.value = [];
-    menus.value = [];
     localStorage.removeItem(SESSION_KEY);
   }
 
-  function fetchPermissions() {
-    permissions.value = [...ALL_PERMISSIONS];
-    roles.value = ['admin'];
-  }
-
   return {
-    user, roles, permissions, menus,
+    user, roles, permissions,
     hasUser, hasPermission,
-    login, logout, fetchPermissions,
+    login, logout,
   };
 });

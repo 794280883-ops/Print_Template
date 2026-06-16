@@ -1,4 +1,4 @@
-import { getBusinessDataMapping, listBusinessTypeConfigs } from "../config/businessDataMapping.js";
+import { getBusinessDataMapping } from "../config/businessDataMapping.js";
 import * as businessModuleRepository from "../repositories/businessModuleRepository.js";
 import * as businessDataRepo from "../repositories/businessDataRepository.js";
 import * as fieldRepository from "../repositories/fieldRepository.js";
@@ -14,12 +14,6 @@ export async function listBusinessTypes() {
   }));
 }
 
-export async function listWarehouses(query = {}) {
-  const mapping = query.bizType ? await getRequiredMapping(query.bizType) : null;
-  const mappings = mapping ? [mapping] : listBusinessTypeConfigs();
-  return businessDataRepo.listWarehouses(mappings);
-}
-
 export async function searchBusinessData(query = {}) {
   const mapping = await getRequiredMapping(query.bizType || query.type);
   return businessDataRepo.search(mapping, {
@@ -30,15 +24,6 @@ export async function searchBusinessData(query = {}) {
     sortField: query.sortField,
     sortDir: query.sortDir,
   });
-}
-
-export async function getBusinessDataDetail(bizType, bizCode) {
-  const mapping = await getRequiredMapping(bizType);
-  const code = String(bizCode || "").trim();
-  if (!code) throw appError("缺少业务编码", 40000, 400);
-  const row = await businessDataRepo.getDetail(mapping, code);
-  if (!row) throw appError("业务数据不存在", 40400, 404);
-  return row;
 }
 
 export async function createBusinessData(payload = {}) {

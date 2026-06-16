@@ -3,7 +3,7 @@ import { pool } from "../config/db.js";
 const IDENTIFIER_RE = /^[A-Za-z0-9_]+$/;
 const MAX_PAGE_SIZE = 200;
 
-export function normalizePaging({ page, pageSize } = {}) {
+function normalizePaging({ page, pageSize } = {}) {
   const safePage = Math.max(1, Number(page) || 1);
   const safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(pageSize) || 20));
   return { page: safePage, pageSize: safeSize, offset: (safePage - 1) * safeSize };
@@ -127,36 +127,6 @@ async function removeJson(mapping, bizCode) {
     [mapping.code, bizCode],
   );
   return result.affectedRows;
-}
-
-export async function listWarehouses(mappings) {
-  const result = new Map();
-  for (const mapping of mappings) {
-    if (!mapping.warehouse) continue;
-    const table = quoteIdentifier(mapping.table);
-    const warehouse = sourceExpression(mapping, mapping.warehouse);
-    const where = [];
-    const params = [...warehouse.params];
-    if (mapping.typeColumn) {
-      where.push(`${quoteIdentifier(mapping.typeColumn)} = ?`);
-      params.push(mapping.typeValue);
-    }
-    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const [rows] = await pool.query(
-      `SELECT DISTINCT ${warehouse.sql} AS warehouseCode
-       FROM ${table}
-       ${whereSql}
-       HAVING warehouseCode IS NOT NULL AND warehouseCode <> ''
-       ORDER BY warehouseCode ASC
-       LIMIT 500`,
-      params,
-    );
-    for (const row of rows) {
-      const code = String(row.warehouseCode || "").trim();
-      if (code && !result.has(code)) result.set(code, { warehouseCode: code, warehouseName: code });
-    }
-  }
-  return [...result.values()];
 }
 
 function buildWrite(mapping, fields) {

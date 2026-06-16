@@ -65,11 +65,6 @@ export const businessDataMappings = {
     ],
   },
 };
-
-export function listBusinessTypeConfigs() {
-  return Object.values(businessDataMappings);
-}
-
 export function getBusinessDataMapping(bizType) {
   return businessDataMappings[String(bizType || "").toUpperCase()] || null;
 }

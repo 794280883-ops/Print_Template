@@ -19,7 +19,7 @@ export async function createPrintLog(payload) {
   return getPrintLog(result.insertId);
 }
 
-export async function getPrintLog(id) {
+async function getPrintLog(id) {
   const [[row]] = await pool.query("SELECT * FROM print_log WHERE id = ?", [id]);
   return row || null;
 }

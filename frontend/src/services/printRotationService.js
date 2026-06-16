@@ -1,9 +1,9 @@
-export function normalizePrintRotation(value) {
+function normalizePrintRotation(value) {
   const angle = ((Number(value || 0) % 360) + 360) % 360;
   return [0, 90, 180, 270].includes(angle) ? angle : 0;
 }
 
-export function getPrintedSize(size, rotation) {
+function getPrintedSize(size, rotation) {
   const angle = normalizePrintRotation(rotation);
   if (angle === 90 || angle === 270) {
     return { ...size, width: Number(size.height), height: Number(size.width) };
@@ -22,7 +22,7 @@ export function getPrintableTemplate(template) {
   };
 }
 
-export function rotateElementsForPrint(elements, size, rotation) {
+function rotateElementsForPrint(elements, size, rotation) {
   const angle = normalizePrintRotation(rotation);
   if (!angle) return [...elements];
 

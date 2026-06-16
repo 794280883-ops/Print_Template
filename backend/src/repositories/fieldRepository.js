@@ -30,7 +30,7 @@ export async function createField(templateType, field) {
   return getField(templateType, field.code);
 }
 
-export async function getField(templateType, fieldCode) {
+async function getField(templateType, fieldCode) {
   const [rows] = await pool.query(
     `SELECT template_type, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled
      FROM print_field_dict
