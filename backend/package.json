@@ -12,10 +12,12 @@
     "test:db": "RUN_DB_TESTS=1 node --test tests/*.test.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "bwip-js": "^4.11.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
     "mysql2": "^3.16.0",
