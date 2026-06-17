@@ -169,17 +169,19 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
   const textHeight = fontSize * 1.2;
   const textY = y + (h - textHeight) / 2;
 
-  const textOpts = {
-    width: w + 100,
-    align: el.align || "left",
-    lineBreak: false,
-  };
+  const align = el.align || "left";
 
-  doc.text(value, x, textY, textOpts);
+  // Calculate x position for center/right alignment
+  const textWidth = doc.widthOfString(value);
+  let textX = x;
+  if (align === "center") textX = x + (w - textWidth) / 2;
+  else if (align === "right") textX = x + w - textWidth;
+
+  doc.text(value, textX, textY, { lineBreak: false });
 
   // Simulate bold for CJK fonts by re-rendering with slight horizontal spread
   if (el.bold) {
-    doc.text(value, x + 0.5, textY, textOpts);
+    doc.text(value, textX + 0.5, textY, { lineBreak: false });
   }
 }
 

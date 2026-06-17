@@ -66,11 +66,12 @@
       <a-form layout="vertical" v-if="editRecord">
         <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
-            <a-select v-if="f.code === 'directionMark'" v-model:value="editFields[f.code]" allow-clear placeholder="请选择方向">
-              <a-select-option value="">空</a-select-option>
-              <a-select-option value="向上">向上</a-select-option>
-              <a-select-option value="向下">向下</a-select-option>
+            <a-select v-if="f.type === 'select' && f.enumOptions" v-model:value="editFields[f.code]" allow-clear :placeholder="'请选择' + f.name">
+              <a-select-option v-for="opt in f.enumOptions" :key="opt" :value="opt">{{ opt }}</a-select-option>
             </a-select>
+            <a-input-number v-else-if="f.type === 'integer'" v-model:value="editFields[f.code]" :precision="0" style="width:100%" />
+            <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" style="width:100%" />
+            <a-date-picker v-else-if="f.type === 'date'" v-model:value="editFields[f.code]" style="width:100%" />
             <a-input v-else v-model:value="editFields[f.code]" />
           </a-form-item>
         </template>
@@ -82,11 +83,12 @@
       <a-form layout="vertical">
         <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
-            <a-select v-if="f.code === 'directionMark'" v-model:value="createFields[f.code]" allow-clear placeholder="请选择方向">
-              <a-select-option value="">空</a-select-option>
-              <a-select-option value="向上">向上</a-select-option>
-              <a-select-option value="向下">向下</a-select-option>
+            <a-select v-if="f.type === 'select' && f.enumOptions" v-model:value="createFields[f.code]" allow-clear :placeholder="'请选择' + f.name">
+              <a-select-option v-for="opt in f.enumOptions" :key="opt" :value="opt">{{ opt }}</a-select-option>
             </a-select>
+            <a-input-number v-else-if="f.type === 'integer'" v-model:value="createFields[f.code]" :precision="0" style="width:100%" />
+            <a-input-number v-else-if="f.type === 'number'" v-model:value="createFields[f.code]" style="width:100%" />
+            <a-date-picker v-else-if="f.type === 'date'" v-model:value="createFields[f.code]" style="width:100%" />
             <a-input v-else v-model:value="createFields[f.code]" />
           </a-form-item>
         </template>
@@ -178,7 +180,7 @@ import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, Download
 import { listBusinessData, deleteBusinessData, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
 import { listTemplates, getTemplate, downloadPrintPdf, listFields } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
-import { FIELD_DICT, TYPE_LABEL, PX_PER_MM } from '../../data/constants.js';
+import { FIELD_DICT, TYPE_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
 
 const rows = ref([]);
 const loading = ref(false);
@@ -205,12 +207,6 @@ const total = ref(0);
 const modules = ref([]);
 const fieldsByType = ref({});
 
-const fallbackModules = [
-  { code: 'LOCATION', name: '库位', templateLabel: '库位模板', dataLabel: '库位数据', codeField: 'locationCode' },
-  { code: 'CONTAINER', name: '容器', templateLabel: '容器模板', dataLabel: '容器数据', codeField: 'containerCode' },
-  { code: 'PRODUCT', name: '商品', templateLabel: '商品模板', dataLabel: '商品数据', codeField: 'productCode' },
-];
-
 const rowSelection = computed(() => ({
   selectedRowKeys: selectedRowKeys.value,
   onChange: (keys) => { selectedRowKeys.value = keys; },
@@ -232,7 +228,7 @@ const displayRows = computed(() => {
   }));
 });
 
-const moduleOptions = computed(() => modules.value.length ? modules.value : fallbackModules);
+const moduleOptions = computed(() => modules.value.length ? modules.value : FALLBACK_MODULES);
 
 const currentModule = computed(() => moduleOptions.value.find((item) => item.code === filters.type) || null);
 
@@ -255,7 +251,7 @@ const dynamicColumns = computed(() => {
       key: field.code,
       ellipsis: true,
       width: field.code === codeFieldCode.value ? 160 : 150,
-      sorter: true,
+      sorter: field.sortable !== false,
       sortOrder: filters.sortField === field.code ? (filters.sortDir === 'ASC' ? 'ascend' : 'descend') : null,
     });
   }
@@ -453,10 +449,13 @@ function printFileName(templateType) {
   return `${templateType || 'PRINT'}_${y}${m}${d}${seq}.pdf`;
 }
 
+const PREVIEW_ARROW_MAP = { '向上': '↑', '向下': '↓', '向左': '←', '向右': '→' };
+
 function getTemplatePreviewText(el) {
   if (el.type !== 'text') return '';
   if (el.textKind === 'field') {
-    if (el.bindField === 'directionMark') return '↑↓';
+    const f = currentFields.value.find(x => x.code === el.bindField);
+    if (f && f.enumOptions) return f.enumOptions.map(v => PREVIEW_ARROW_MAP[v] || v).join('');
     return `[${el.bindField || '未绑定'}]`;
   }
   return el.text || '静态文本';

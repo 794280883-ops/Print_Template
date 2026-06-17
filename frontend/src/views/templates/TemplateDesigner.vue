@@ -152,9 +152,9 @@
               <!-- Text-specific props -->
               <template v-if="selectedElement.type === 'text'">
                 <a-row :gutter="8">
-                  <a-col v-if="selectedElement.bindField !== 'directionMark'" :span="24"><a-form-item label="文本类型"><a-radio-group v-model:value="selectedElement.textKind" data-prop="textType" button-style="solid" @change="onPropChange"><a-radio-button value="static">静态文本</a-radio-button><a-radio-button value="field">动态字段</a-radio-button></a-radio-group></a-form-item></a-col>
+                  <a-col :span="24"><a-form-item label="文本类型"><a-radio-group v-model:value="selectedElement.textKind" data-prop="textType" button-style="solid" @change="onPropChange"><a-radio-button value="static">静态文本</a-radio-button><a-radio-button value="field">动态字段</a-radio-button></a-radio-group></a-form-item></a-col>
                   <a-col :span="24"><a-form-item label="绑定字段"><a-select id="bindField" v-model:value="selectedElement.bindField" data-prop="bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item></a-col>
-                  <a-col v-if="selectedElement.textKind === 'static' && selectedElement.bindField !== 'directionMark'" :span="24"><a-form-item label="静态内容"><a-textarea v-model:value="selectedElement.text" data-prop="staticContent" :rows="2" @change="onPropChange" /></a-form-item></a-col>
+                  <a-col v-if="selectedElement.textKind === 'static'" :span="24"><a-form-item label="静态内容"><a-textarea v-model:value="selectedElement.text" data-prop="staticContent" :rows="2" @change="onPropChange" /></a-form-item></a-col>
                   <a-col :span="12"><a-form-item label="字号 px"><a-input-number v-model:value="selectedElement.fontSize" data-prop="fontSize" :min="1" :step="1" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
                   <a-col :span="12"><a-form-item label=" "><a-checkbox v-model:checked="selectedElement.bold" data-prop="bold" @change="onPropChange">加粗</a-checkbox></a-form-item></a-col>
                   <a-col :span="12"><a-form-item label="对齐"><a-select v-model:value="selectedElement.align" data-prop="textAlign" @change="onPropChange"><a-select-option value="left">左对齐</a-select-option><a-select-option value="center">居中</a-select-option><a-select-option value="right">右对齐</a-select-option></a-select></a-form-item></a-col>
@@ -253,6 +253,8 @@ import { getTemplate, updateTemplate, listFields } from '../../api/templateApi.j
 import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
 import { validateTemplateDsl } from '../../services/validationService.js';
 import { getPrintableTemplate } from '../../services/printRotationService.js';
+
+const ARROW_MAP = { '向上': '↑', '向下': '↓', '向左': '←', '向右': '→' };
 
 const route = useRoute();
 const router = useRouter();
@@ -429,9 +431,10 @@ function getPreviewElementStyle(el) {
 function getTextDisplay(el) {
   if (el.type !== 'text') return '';
   if (el.textKind === 'field') {
-    if (el.bindField === 'directionMark') return '↑↓';
     const f = currentFields.value.find(x => x.code === el.bindField);
-    return f ? f.name : (el.bindField || '未绑定');
+    if (!f) return el.bindField || '未绑定';
+    if (f.enumOptions) return f.enumOptions.map(v => ARROW_MAP[v] || v).join('');
+    return f.name;
   }
   return el.text ?? '静态文本';
 }
@@ -512,9 +515,6 @@ function addElementFromData(data) {
     const boundField = currentFields.value.find(f => f.code === el.bindField);
     if (boundField) el.text = boundField.name;
   }
-  if (el.type === 'text' && el.bindField === 'directionMark') {
-    el.color = '#ffffff';
-  }
   template.value.elements.push(el);
   selectedElementId.value = el.id;
 }
@@ -542,13 +542,7 @@ function pasteSelected() {
   selectedElementId.value = el.id;
 }
 
-function onPropChange() {
-  const el = selectedElement.value;
-  if (el && el.type === 'text' && el.bindField === 'directionMark') {
-    if (el.textKind !== 'field') el.textKind = 'field';
-    el.color = '#ffffff';
-  }
-}
+function onPropChange() {}
 
 function onSizeChange() {
   if (!template.value) return;
@@ -652,9 +646,6 @@ function handleDrop(event) {
   if (el.type === 'text' && el.textKind === 'field') {
     const boundField = currentFields.value.find(f => f.code === el.bindField);
     if (boundField) el.text = boundField.name;
-  }
-  if (el.type === 'text' && el.bindField === 'directionMark') {
-    el.color = '#ffffff';
   }
   template.value.elements.push(el);
   selectedElementId.value = el.id;

@@ -12,7 +12,7 @@
             cancel-text="取消"
             @confirm="handleDeleteModule"
           >
-            <a-button danger :disabled="!canDeleteActiveModule">删除模块</a-button>
+            <a-button danger type="primary">删除模块</a-button>
           </a-popconfirm>
         </a-space>
       </div>
@@ -35,7 +35,10 @@
         :scroll="{ x: 'max-content' }"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'required'">
+          <template v-if="column.key === 'type'">
+            {{ TYPE_LABEL[record.type] || record.type }}
+          </template>
+          <template v-else-if="column.key === 'required'">
             <a-tag :color="record.required ? 'red' : 'default'">
               {{ record.required ? '必填' : '选填' }}
             </a-tag>
@@ -115,18 +118,24 @@
         </a-form-item>
         <a-form-item label="字段类型" required>
           <a-select v-model:value="fieldForm.type">
-            <a-select-option value="string">字符串</a-select-option>
-            <a-select-option value="number">数字</a-select-option>
+            <a-select-option value="string">字符</a-select-option>
+            <a-select-option value="number">数值</a-select-option>
             <a-select-option value="integer">整数</a-select-option>
             <a-select-option value="date">日期</a-select-option>
-            <a-select-option value="select">下拉</a-select-option>
+            <a-select-option value="select">枚举</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
-          <a-checkbox v-model:checked="fieldForm.required">必填</a-checkbox>
+          <a-space>
+            <a-checkbox v-model:checked="fieldForm.required">必填</a-checkbox>
+            <a-checkbox v-model:checked="fieldForm.sortable">支持排序</a-checkbox>
+          </a-space>
         </a-form-item>
         <a-form-item label="示例值">
           <a-input v-model:value="fieldForm.example" />
+        </a-form-item>
+        <a-form-item v-if="fieldForm.type === 'select'" label="枚举选项">
+          <a-input v-model:value="fieldForm.enumOptionsText" placeholder="选项以逗号分隔，如：A,B,C" />
         </a-form-item>
         <a-form-item label="排序">
           <a-input-number v-model:value="fieldForm.sortNo" :min="0" style="width:100%" />
@@ -154,7 +163,7 @@ import {
   updateModuleField,
 } from '../../api/businessModuleApi.js';
 import { listFields } from '../../api/templateApi.js';
-import { FIELD_DICT } from '../../data/constants.js';
+import { FIELD_DICT, FALLBACK_MODULES, BUILT_IN_MODULE_CODES } from '../../data/constants.js';
 
 const activeType = ref('LOCATION');
 const modules = ref([]);
@@ -167,11 +176,8 @@ const fieldEditing = ref(false);
 const fieldEditingCode = ref('');
 const moduleEditing = ref(false);
 
-const fallbackModules = [
-  { code: 'LOCATION', name: '库位', templateLabel: '库位模板', dataLabel: '库位数据' },
-  { code: 'CONTAINER', name: '容器', templateLabel: '容器模板', dataLabel: '容器数据' },
-  { code: 'PRODUCT', name: '商品', templateLabel: '商品模板', dataLabel: '商品数据' },
-];
+const TYPE_LABEL = { string: '字符', number: '数值', integer: '整数', date: '日期', select: '枚举' };
+
 
 const columns = [
   { title: '中文名称', dataIndex: 'name', key: 'name', width: 140 },
@@ -187,10 +193,10 @@ const columns = [
 const moduleForm = ref(emptyModuleForm());
 const fieldForm = ref(emptyFieldForm());
 
-const moduleOptions = computed(() => modules.value.length ? modules.value : fallbackModules);
-const builtInTypes = new Set(['LOCATION', 'CONTAINER', 'PRODUCT']);
+const moduleOptions = computed(() => modules.value.length ? modules.value : FALLBACK_MODULES);
+const builtInCodes = new Set(BUILT_IN_MODULE_CODES);
 const activeModule = computed(() => moduleOptions.value.find(item => item.code === activeType.value));
-const canDeleteActiveModule = computed(() => !!activeType.value && !builtInTypes.has(activeType.value));
+const canDeleteActiveModule = computed(() => !!activeType.value && !builtInCodes.has(activeType.value));
 
 const fields = computed(() => {
   return (fieldMap.value[activeType.value] || FIELD_DICT[activeType.value] || []).map(f => ({
@@ -244,6 +250,8 @@ function emptyFieldForm() {
     name: '',
     type: 'string',
     required: false,
+    sortable: false,
+    enumOptionsText: '',
     example: '',
     desc: '',
     sortNo: 0,
@@ -285,6 +293,8 @@ function openEditFieldModal(record) {
     name: record.name,
     type: record.type || 'string',
     required: !!record.required,
+    sortable: !!record.sortable,
+    enumOptionsText: Array.isArray(record.enumOptions) ? record.enumOptions.join(',') : '',
     example: record.example || '',
     desc: record.desc || '',
     sortNo: Number(record.sortNo || 0),
@@ -370,6 +380,8 @@ async function handleSaveField() {
       name: form.name.trim(),
       type: form.type,
       required: !!form.required,
+      sortable: !!form.sortable,
+      enumOptions: form.enumOptionsText ? form.enumOptionsText.split(',').map(s => s.trim()).filter(Boolean) : null,
       example: form.example.trim(),
       desc: form.desc.trim(),
       sortNo: Number(form.sortNo || 0),

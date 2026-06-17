@@ -1,3 +1,11 @@
+export const BUILT_IN_MODULE_CODES = ["LOCATION", "CONTAINER", "PRODUCT"];
+
+export const FALLBACK_MODULES = [
+  { code: "LOCATION", name: "库位", templateLabel: "库位模板", dataLabel: "库位数据", codeField: "locationCode" },
+  { code: "CONTAINER", name: "容器", templateLabel: "容器模板", dataLabel: "容器数据", codeField: "containerCode" },
+  { code: "PRODUCT", name: "商品", templateLabel: "商品模板", dataLabel: "商品数据", codeField: "productCode" },
+];
+
 export const PX_PER_MM = 4;
 
 export const TYPE_LABEL = {
@@ -20,7 +28,7 @@ export const FIELD_DICT = {
     { code: "row", name: "排", type: "integer", example: "12", required: false, desc: "货架排号，整数，从 1 开始递增" },
     { code: "column", name: "列", type: "integer", example: "89", required: false, desc: "货架列号，整数，表示该排在仓库中的列位置" },
     { code: "level", name: "层", type: "string", example: "B1", required: false, desc: "货架层级标识，由字母+数字组成，如 A1、B2、C3" },
-    { code: "directionMark", name: "方向标", type: "string", example: "↑", required: false, desc: "方向指示符，↑ ↓ ← → 表示货架朝向或存取方向" },
+    { code: "directionMark", name: "方向标", type: "select", example: "↑", required: false, enumOptions: ["向上", "向下"], desc: "方向指示符" },
     { code: "warehouseCode", name: "区域仓编码", type: "string", example: "JP-TYO-01", required: false, desc: "区域仓编码" },
     { code: "areaCode", name: "物理仓编码", type: "string", example: "JP01", required: false, desc: "物理仓编码" },
   ],

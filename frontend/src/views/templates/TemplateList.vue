@@ -253,7 +253,7 @@ import {
 } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { searchBusinessData } from '../../api/businessDataApi.js';
-import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM } from '../../data/constants.js';
+import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM, FALLBACK_MODULES, FIELD_DICT } from '../../data/constants.js';
 
 const router = useRouter();
 
@@ -262,12 +262,6 @@ const rows = ref([]);
 const loading = ref(false);
 const selectedRowKeys = ref([]);
 const modules = ref([]);
-
-const fallbackModules = [
-  { code: 'LOCATION', name: '库位', templateLabel: '库位模板', dataLabel: '库位数据' },
-  { code: 'CONTAINER', name: '容器', templateLabel: '容器模板', dataLabel: '容器数据' },
-  { code: 'PRODUCT', name: '商品', templateLabel: '商品模板', dataLabel: '商品数据' },
-];
 
 const filters = reactive({
   name: '',
@@ -318,7 +312,7 @@ const tablePagination = computed(() => ({
   pageSizeOptions: ['10', '20', '50', '100'],
 }));
 
-const moduleOptions = computed(() => modules.value.length ? modules.value : fallbackModules);
+const moduleOptions = computed(() => modules.value.length ? modules.value : FALLBACK_MODULES);
 
 const moduleLabelMap = computed(() => {
   return Object.fromEntries(moduleOptions.value.map((item) => [item.code, item.name || item.code]));
@@ -405,10 +399,14 @@ function getPrintPreviewStyle(el) {
   };
 }
 
+const PREVIEW_ARROW_MAP = { '向上': '↑', '向下': '↓', '向左': '←', '向右': '→' };
+
 function getPreviewText(el) {
   if (el.type !== 'text') return '';
   if (el.textKind === 'field') {
-    if (el.bindField === 'directionMark') return '↑↓';
+    const fields = FIELD_DICT[previewTemplate.value?.templateType] || [];
+    const f = fields.find(x => x.code === el.bindField);
+    if (f && f.enumOptions) return f.enumOptions.map(v => PREVIEW_ARROW_MAP[v] || v).join('');
     return `[${el.bindField || '未绑定'}]`;
   }
   return el.text || '静态文本';

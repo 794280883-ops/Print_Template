@@ -67,7 +67,15 @@ export function normalizeField(payload = {}, { requireCode } = {}) {
     required: Boolean(payload.required),
     desc: String(payload.desc || payload.description || "").trim(),
     sortNo: Number(payload.sortNo ?? payload.sort_no ?? 0) || 0,
+    searchable: Boolean(payload.searchable),
+    sortable: Boolean(payload.sortable),
+    enumOptions: Array.isArray(payload.enumOptions) ? payload.enumOptions : null,
   };
+}
+
+function parseEnumOptions(raw) {
+  if (!raw) return null;
+  try { const v = typeof raw === "string" ? JSON.parse(raw) : raw; return Array.isArray(v) ? v : null; } catch { return null; }
 }
 
 function toDto(row) {
@@ -80,5 +88,8 @@ function toDto(row) {
     desc: row.description,
     sortNo: Number(row.sort_no || 0),
     enabled: row.enabled !== 0,
+    searchable: Boolean(row.searchable),
+    sortable: Boolean(row.sortable),
+    enumOptions: parseEnumOptions(row.enum_options),
   };
 }
