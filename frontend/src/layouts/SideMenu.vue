@@ -17,7 +17,7 @@
         <rect x="15" y="8" width="10" height="4" rx="1" fill="currentColor" opacity="0.3"/>
         <rect x="16" y="8.5" width="8" height="3" rx="0.5" fill="currentColor" opacity="0.6"/>
       </svg>
-      <span v-if="!collapsed" class="logo-text">打印模板中心</span>
+      <span v-if="!collapsed" class="logo-text">打印模版系统</span>
     </div>
     <a-menu
       mode="inline"

@@ -9,7 +9,9 @@ const routes = [
   },
   {
     path: '/',
-    redirect: '/templates',
+    name: 'Home',
+    meta: { title: '首页', hidden: true },
+    component: () => import('../views/home/HomePage.vue'),
   },
   {
     path: '/templates',

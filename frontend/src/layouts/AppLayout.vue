@@ -55,6 +55,7 @@ const ctxY = ref(0);
 const ctxTab = ref(null);
 
 const PATH_LABEL = {
+  '/': '首页',
   '/templates': '模板列表',
   '/fields': '模版字段',
   '/business': '业务数据',
@@ -63,11 +64,17 @@ const PATH_LABEL = {
   '/system/menus': '菜单管理',
 };
 
+function getTabTitle(path) {
+  if (PATH_LABEL[path]) return PATH_LABEL[path];
+  if (path.startsWith('/templates/') && path.endsWith('/designer')) return '模版设计器';
+  return path;
+}
+
 watch(() => route.path, (path) => {
   if (path === '/login' || path === '/403' || path === '/') return;
   const existing = tabs.value.find(t => t.path === path);
   if (!existing) {
-    tabs.value.push({ path, title: PATH_LABEL[path] || path });
+    tabs.value.push({ path, title: getTabTitle(path) });
   }
   activeTab.value = path;
 }, { immediate: true });
@@ -82,7 +89,7 @@ function showContextMenu(e, tab) {
 function openTab({ path, title }) {
   const existing = tabs.value.find(t => t.path === path);
   if (existing) { activeTab.value = path; router.push(path); return; }
-  tabs.value.push({ path, title: title || PATH_LABEL[path] || path });
+  tabs.value.push({ path, title: title || getTabTitle(path) });
   activeTab.value = path;
   router.push(path);
 }
@@ -118,7 +125,7 @@ function activateNext(closedPath) {
 onMounted(() => {
   const path = route.path;
   if (path !== '/login' && path !== '/403' && path !== '/') {
-    tabs.value = [{ path, title: PATH_LABEL[path] || path }];
+    tabs.value = [{ path, title: getTabTitle(path) }];
     activeTab.value = path;
   }
 });

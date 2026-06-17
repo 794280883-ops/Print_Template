@@ -1,8 +1,8 @@
 <template>
   <div class="login-card">
     <div class="login-header">
-      <h2>打印模板中心</h2>
-      <p class="login-subtitle">模板管理系统</p>
+      <h2>打印模版系统</h2>
+      <p class="login-subtitle">可视化打印模板设计与管理平台</p>
     </div>
     <a-form
       :model="form"
@@ -12,14 +12,14 @@
     >
       <a-form-item label="用户名" name="username"
         :rules="[{ required: true, message: '请输入用户名' }]">
-        <a-input v-model:value="form.username" placeholder="任意用户名均可登录" size="large">
+        <a-input v-model:value="form.username" placeholder="请输入用户名" size="large">
           <template #prefix><user-outlined /></template>
         </a-input>
       </a-form-item>
 
       <a-form-item label="密码" name="password"
         :rules="[{ required: true, message: '请输入密码' }]">
-        <a-input-password v-model:value="form.password" placeholder="任意密码均可登录" size="large">
+        <a-input-password v-model:value="form.password" placeholder="请输入密码" size="large">
           <template #prefix><lock-outlined /></template>
         </a-input-password>
       </a-form-item>
@@ -53,7 +53,7 @@ async function handleLogin() {
   loading.value = true;
   try {
     await store.login({ username: form.username, password: form.password });
-    router.push('/templates');
+    router.push('/');
   } catch (e) {
     message.error(e.message || '登录失败');
   } finally {
@@ -65,10 +65,13 @@ async function handleLogin() {
 <style scoped>
 .login-card {
   width: 380px;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 14px 32px rgba(16, 24, 40, 0.08);
-  padding: 40px 32px 32px;
+  background: rgba(255,255,255,0.95);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  padding: 44px 36px 36px;
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 1;
 }
 .login-header {
   text-align: center;
