@@ -53,11 +53,11 @@
     <a-card>
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
         <span style="font-size:13px;color:#666">已选 {{ selectedRowKeys.length }} 项</span>
-        <a-button size="small" type="primary" ghost @click="handleCreate" v-permission="'template:create'">
-          <plus-outlined /> 新增
+        <a-button type="primary" @click="handleCreate" v-permission="'template:create'">
+          新增
         </a-button>
-        <a-button size="small" type="primary" ghost :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('enabled')">批量启用</a-button>
-        <a-button size="small" danger ghost :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('disabled')">批量停用</a-button>
+        <a-button type="primary" :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('enabled')">启用</a-button>
+        <a-button type="primary" danger :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('disabled')">停用</a-button>
       </div>
       <a-table
         :columns="columns"
@@ -239,7 +239,6 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
-import { PlusOutlined } from '@ant-design/icons-vue';
 import {
   listTemplates,
   getTemplate,
