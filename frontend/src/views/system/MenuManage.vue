@@ -1,86 +1,203 @@
 <template>
-  <div class="menu-manage">
-    <a-card size="small">
-      <a-space style="margin-bottom:12px;">
-        <a-button type="primary" @click="handleAddRoot" v-permission="'system:menu:create'"><plus-outlined /> 新增菜单</a-button>
-      </a-space>
-      <a-table :columns="columns" :data-source="menus" :pagination="false" row-key="id" size="middle" :defaultExpandAllRows="true">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button size="small" @click="handleAddChild(record)" v-permission="'system:menu:create'">添加子菜单</a-button>
-              <a-button size="small" @click="handleEdit(record)" v-permission="'system:menu:edit'">编辑</a-button>
-              <a-popconfirm title="确认删除?" @confirm="handleDelete(record)"><a-button size="small" danger v-permission="'system:menu:delete'">删除</a-button></a-popconfirm>
-            </a-space>
-          </template>
+  <div class="menu-manage" style="display:flex;gap:16px;height:calc(100vh - 120px);">
+    <!-- Left: Tree -->
+    <a-card size="small" title="菜单树" style="width:320px;flex-shrink:0;overflow:auto;">
+      <template #extra>
+        <a-space>
+          <a-button size="small" type="primary" @click="handleAddRoot" v-permission="'system:menu:create'">新增顶部</a-button>
+          <a-button size="small" @click="handleAddChild(currentMenuId)" :disabled="!currentMenuId" v-permission="'system:menu:create'">添加子项</a-button>
+        </a-space>
+      </template>
+      <a-tree
+        v-if="treeData.length"
+        :tree-data="treeData"
+        :selected-keys="selectedKeys"
+        :expanded-keys="expandedKeys"
+        :field-names="{ children: 'children', title: 'title', key: 'key' }"
+        block-node
+        @select="handleSelect"
+        @expand="handleExpand"
+      >
+        <template #title="{ title, icon: iconName, type }">
+          <span :style="{ color: type === 'directory' ? '#1677ff' : type === 'page' ? '#333' : '#999', fontWeight: type === 'directory' ? 600 : 400 }">
+            {{ type === 'directory' ? '📁' : type === 'page' ? '📄' : '🔘' }} {{ title }}
+          </span>
         </template>
-      </a-table>
+      </a-tree>
+      <div v-else style="text-align:center;color:#999;padding:40px 0;">暂无菜单</div>
     </a-card>
 
-    <a-modal v-model:open="modalVisible" :title="editingId ? '编辑菜单' : '新增菜单'" @ok="handleSave" @cancel="modalVisible = false">
-      <a-form layout="vertical" :model="form">
-        <a-form-item label="菜单名称" required><a-input v-model:value="form.title" placeholder="如 模板列表" /></a-form-item>
-        <a-form-item label="路由路径" required><a-input v-model:value="form.path" placeholder="如 /templates" /></a-form-item>
-        <a-form-item label="图标"><a-input v-model:value="form.icon" placeholder="Ant Design 图标名" /></a-form-item>
-        <a-form-item label="权限码"><a-input v-model:value="form.permission" placeholder="如 template:view" /></a-form-item>
-        <a-form-item label="排序"><a-input-number v-model:value="form.sort" :min="0" style="width:100%;" /></a-form-item>
-      </a-form>
-    </a-modal>
+    <!-- Right: Detail -->
+    <a-card size="small" :title="currentMenuId ? '编辑菜单' : '选择左侧菜单查看'" style="flex:1;overflow:auto;">
+      <div v-if="currentMenuId">
+        <template v-if="currentMenu">
+          <a-form layout="vertical" :model="form">
+            <a-row :gutter="16">
+              <a-col :span="12"><a-form-item label="上级菜单"><a-input :value="parentName" disabled /></a-form-item></a-col>
+              <a-col :span="12"><a-form-item label="类型"><a-tag :color="currentMenu.type === 'directory' ? 'purple' : currentMenu.type === 'page' ? 'blue' : 'default'">{{ TYPE_MAP[currentMenu.type] }}</a-tag></a-form-item></a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :span="12"><a-form-item label="名称" required><a-input v-model:value="form.name" /></a-form-item></a-col>
+              <a-col :span="12"><a-form-item label="类型" required><a-select v-model:value="form.type"><a-select-option value="directory">目录</a-select-option><a-select-option value="page">页面</a-select-option><a-select-option value="button">按钮</a-select-option></a-select></a-form-item></a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col v-if="form.type === 'page'" :span="12"><a-form-item label="路由路径"><a-input v-model:value="form.path" placeholder="/templates" /></a-form-item></a-col>
+              <a-col v-if="form.type !== 'directory'" :span="12"><a-form-item label="权限编码"><a-input v-model:value="form.permission_code" placeholder="template:view" /></a-form-item></a-col>
+            </a-row>
+            <a-row :gutter="16">
+              <a-col :span="8"><a-form-item label="图标"><a-input v-model:value="form.icon" placeholder="FileTextOutlined" /></a-form-item></a-col>
+              <a-col :span="4"><a-form-item label="排序"><a-input-number v-model:value="form.sort_no" :min="0" style="width:100%" /></a-form-item></a-col>
+              <a-col :span="4"><a-form-item label="可见"><a-switch v-model:checked="form.visible" /></a-form-item></a-col>
+            </a-row>
+          </a-form>
+          <div style="border-top:1px solid #f0f0f0;padding-top:12px;margin-top:12px;">
+            <a-space>
+              <a-button type="primary" :loading="saving" @click="handleSave" v-permission="'system:menu:edit'">保存</a-button>
+              <a-button @click="handleResetForm">重置</a-button>
+              <a-popconfirm title="确认删除此菜单及其子菜单?" @confirm="handleDelete">
+                <a-button danger v-permission="'system:menu:delete'">删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </div>
+        </template>
+      </div>
+      <div v-else style="text-align:center;color:#999;padding:80px 0;">← 点击左侧菜单节点查看详情</div>
+    </a-card>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
-import { PlusOutlined } from '@ant-design/icons-vue';
+import { listMenus, createMenu, updateMenu, deleteMenu } from '../../api/menuApi.js';
 
-const STORAGE_KEY = 'wms_menus';
-const columns = [
-  { title: '菜单名称', dataIndex: 'title', key: 'title' },
-  { title: '路由路径', dataIndex: 'path', key: 'path' },
-  { title: '图标', dataIndex: 'icon', key: 'icon', width: 100 },
-  { title: '权限码', dataIndex: 'permission', key: 'permission' },
-  { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
-  { title: '操作', key: 'action', width: 260 },
-];
+const TYPE_MAP = { directory: '目录', page: '页面', button: '按钮' };
 
 const menus = ref([]);
-const modalVisible = ref(false);
-const editingId = ref(null);
-const parentId = ref(null);
-const form = reactive({ title: '', path: '', icon: '', permission: '', sort: 0 });
-
-function seedData() {
-  const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  if (existing.length === 0) {
-    existing.push(
-      { id: 1, title: '模板列表', path: '/templates', icon: 'FileTextOutlined', permission: 'template:view', sort: 1, children: [] },
-      { id: 2, title: '模版字段', path: '/fields', icon: 'DatabaseOutlined', permission: 'field:view', sort: 2, children: [] },
-      { id: 3, title: '业务数据', path: '/business', icon: 'TableOutlined', permission: 'business:view', sort: 3, children: [] },
-      { id: 4, title: '系统管理', path: '', icon: 'SettingOutlined', permission: '', sort: 99, children: [
-        { id: 41, title: '用户管理', path: '/system/users', icon: 'UserOutlined', permission: 'system:user:view', sort: 1, children: [] },
-        { id: 42, title: '角色管理', path: '/system/roles', icon: 'TeamOutlined', permission: 'system:role:view', sort: 2, children: [] },
-        { id: 43, title: '菜单管理', path: '/system/menus', icon: 'MenuOutlined', permission: 'system:menu:view', sort: 3, children: [] },
-      ]},
-    );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+const expandedKeys = ref([]);
+const allKeys = computed(() => {
+  const keys = [];
+  function walk(nodes) {
+    for (const n of nodes) {
+      keys.push(n.key);
+      if (n.children) walk(n.children);
+    }
   }
-  return existing;
+  walk(treeData.value);
+  return keys;
+});
+const selectedKeys = ref([]);
+const currentMenuId = ref(null);
+const saving = ref(false);
+
+const form = ref({ name: '', type: 'page', path: '', permission_code: '', icon: '', sort_no: 0, visible: true });
+const editingId = ref(null);
+const addingParentId = ref(0);
+
+const treeData = computed(() => buildTree(menus.value, 0));
+
+function buildTree(rows, parentId) {
+  return rows
+    .filter(r => r.parent_id === parentId)
+    .sort((a, b) => (a.sort_no || 0) - (b.sort_no || 0))
+    .map(r => ({
+      key: r.id,
+      title: r.name,
+      type: r.type,
+      icon: r.icon,
+      children: buildTree(rows, r.id),
+    }));
 }
-function loadData() { menus.value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(menus.value)); }
-function findMenu(items, id) { for (const item of items) { if (item.id === id) return item; if (item.children) { const f = findMenu(item.children, id); if (f) return f; } } return null; }
-function removeMenu(items, id) { return items.filter(item => { if (item.id === id) return false; if (item.children) item.children = removeMenu(item.children, id); return true; }); }
-function handleAddRoot() { editingId.value = null; parentId.value = null; form.title = ''; form.path = ''; form.icon = ''; form.permission = ''; form.sort = 0; modalVisible.value = true; }
-function handleAddChild(parent) { editingId.value = null; parentId.value = parent.id; form.title = ''; form.path = ''; form.icon = ''; form.permission = ''; form.sort = 0; modalVisible.value = true; }
-function handleEdit(record) { editingId.value = record.id; form.title = record.title; form.path = record.path; form.icon = record.icon || ''; form.permission = record.permission || ''; form.sort = record.sort || 0; modalVisible.value = true; }
-function handleSave() {
-  if (!form.title || !form.path) { message.warning('请填写必填项'); return; }
-  if (editingId.value) { const m = findMenu(menus.value, editingId.value); if (m) Object.assign(m, { ...form }); }
-  else if (parentId.value) { const p = findMenu(menus.value, parentId.value); if (p) { if (!p.children) p.children = []; p.children.push({ id: Date.now(), ...form, sort: form.sort || 0, children: [] }); } }
-  else { menus.value.push({ id: Date.now(), ...form, sort: form.sort || 0, children: [] }); }
-  saveData(); loadData(); modalVisible.value = false; message.success('保存成功');
+
+const currentMenu = computed(() => menus.value.find(m => m.id === currentMenuId.value));
+const parentName = computed(() => {
+  if (!currentMenu.value) return '';
+  const p = menus.value.find(m => m.id === currentMenu.value.parent_id);
+  return p ? p.name : '顶级';
+});
+
+function findParent(id) {
+  const m = menus.value.find(x => x.id === id);
+  return m ? m.parent_id : 0;
 }
-function handleDelete(record) { menus.value = removeMenu(menus.value, record.id); saveData(); loadData(); message.success('删除成功'); }
-onMounted(() => { seedData(); loadData(); });
+
+function collectDescendantIds(id, list) {
+  list.push(id);
+  for (const m of menus.value) {
+    if (m.parent_id === id) collectDescendantIds(m.id, list);
+  }
+}
+
+async function loadData() {
+  try { menus.value = await listMenus(); } catch { /* noop */ }
+  expandedKeys.value = [...allKeys.value];
+}
+
+function handleSelect(keys) {
+  if (!keys.length) { currentMenuId.value = null; return; }
+  currentMenuId.value = keys[0];
+  const m = menus.value.find(x => x.id === keys[0]);
+  if (m) {
+    editingId.value = m.id;
+    form.value = { name: m.name, type: m.type, path: m.path || '', permission_code: m.permission_code || '', icon: m.icon || '', sort_no: m.sort_no || 0, visible: m.visible !== 0 };
+  }
+}
+
+function handleExpand(keys) { expandedKeys.value = keys; }
+
+function handleAddRoot() {
+  currentMenuId.value = null; editingId.value = null; addingParentId.value = 0;
+  form.value = { name: '', type: 'directory', path: '', permission_code: '', icon: '', sort_no: 0, visible: true };
+}
+
+function handleAddChild(parentId) {
+  if (!parentId) { message.info('请先选择左侧菜单节点'); return; }
+  const p = menus.value.find(m => m.id === parentId);
+  editingId.value = null; addingParentId.value = parentId;
+  form.value = {
+    name: '', type: p?.type === 'directory' ? 'page' : 'button',
+    path: '', permission_code: '', icon: '', sort_no: 0, visible: true,
+  };
+  currentMenuId.value = parentId; // keep parent selected
+}
+
+function handleResetForm() {
+  const m = currentMenu.value;
+  if (m) {
+    form.value = { name: m.name, type: m.type, path: m.path || '', permission_code: m.permission_code || '', icon: m.icon || '', sort_no: m.sort_no || 0, visible: m.visible !== 0 };
+  }
+}
+
+async function handleSave() {
+  if (!form.value.name || !form.value.type) { message.warning('请填写必填项'); return; }
+  saving.value = true;
+  try {
+    const data = { ...form.value, parent_id: editingId.value ? currentMenu.value.parent_id : addingParentId.value };
+    if (editingId.value) {
+      await updateMenu(editingId.value, data);
+    } else {
+      await createMenu(data);
+    }
+    message.success('保存成功');
+    await loadData();
+    // Keep selection if editing, expand parent
+    if (editingId.value) {
+      currentMenuId.value = editingId.value;
+      selectedKeys.value = [editingId.value];
+    }
+  } catch (e) { message.error('保存失败：' + (e.message || '')); }
+  finally { saving.value = false; }
+}
+
+async function handleDelete() {
+  if (!currentMenuId.value) return;
+  try {
+    await deleteMenu(currentMenuId.value);
+    message.success('删除成功');
+    currentMenuId.value = null;
+    await loadData();
+  } catch (e) { message.error('删除失败：' + (e.message || '')); }
+}
+
+onMounted(loadData);
 </script>

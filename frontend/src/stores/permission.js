@@ -1,19 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-
-// Mock: 全量权限码列表
-const ALL_PERMISSIONS = [
-  // 模板管理
-  'template:view', 'template:create', 'template:edit', 'template:delete', 'template:publish',
-  // 字段字典
-  'field:view',
-  // 业务数据
-  'business:view', 'business:create', 'business:edit', 'business:delete', 'business:import',
-  // 系统管理
-  'system:user:view', 'system:user:create', 'system:user:edit', 'system:user:delete',
-  'system:role:view', 'system:role:create', 'system:role:edit', 'system:role:delete',
-  'system:menu:view', 'system:menu:create', 'system:menu:edit', 'system:menu:delete',
-];
+import { login as loginApi } from '../api/authApi.js';
 
 const SESSION_KEY = 'wms_session';
 
@@ -29,14 +16,12 @@ function saveSession(data) {
 }
 
 export const usePermissionStore = defineStore('permission', () => {
-  // -- State --
-  // 从 localStorage 恢复登录态，避免页面刷新或 goto 导航后丢失
   const saved = loadSession();
   const user = ref(saved?.user || null);
-  const roles = ref(saved?.roles || []);
   const permissions = ref(saved?.permissions || []);
+  const menus = ref(saved?.menus || []);
+  const token = ref(saved?.token || '');
 
-  // -- Getters --
   const hasUser = computed(() => !!user.value);
 
   function hasPermission(code) {
@@ -44,37 +29,37 @@ export const usePermissionStore = defineStore('permission', () => {
     return permissions.value.includes(code);
   }
 
+  function getToken() { return token.value; }
+
   function persist() {
     saveSession({
       user: user.value,
-      roles: roles.value,
       permissions: permissions.value,
+      menus: menus.value,
+      token: token.value,
     });
   }
 
-  // -- Actions --
-  function login(credentials) {
-    user.value = {
-      id: 1,
-      username: credentials.username || 'admin',
-      nickname: '系统管理员',
-      avatar: '',
-    };
-    roles.value = ['admin'];
-    permissions.value = [...ALL_PERMISSIONS];
+  async function login(credentials) {
+    const result = await loginApi(credentials.username, credentials.password);
+    user.value = result.user;
+    permissions.value = result.permissions;
+    menus.value = result.menus;
+    token.value = result.token;
     persist();
   }
 
   function logout() {
     user.value = null;
-    roles.value = [];
     permissions.value = [];
+    menus.value = [];
+    token.value = '';
     localStorage.removeItem(SESSION_KEY);
   }
 
   return {
-    user, roles, permissions,
-    hasUser, hasPermission,
+    user, permissions, menus, token,
+    hasUser, hasPermission, getToken,
     login, logout,
   };
 });

@@ -3,16 +3,16 @@
     <a-card size="small">
       <div class="field-toolbar">
         <a-space>
-          <a-button type="primary" @click="openModuleModal">新增模块</a-button>
-          <a-button @click="openCreateFieldModal" :disabled="!activeType">新增字段</a-button>
-          <a-button @click="openEditModuleModal" :disabled="!activeModule">编辑模块</a-button>
+          <a-button type="primary" @click="openModuleModal" v-permission="'field:module:create'">新增模块</a-button>
+          <a-button @click="openCreateFieldModal" :disabled="!activeType" v-permission="'field:create'">新增字段</a-button>
+          <a-button @click="openEditModuleModal" :disabled="!activeModule" v-permission="'field:module:edit'">编辑模块</a-button>
           <a-popconfirm
             :title="`确认删除模块「${activeModule?.name || activeType}」?`"
             ok-text="确认"
             cancel-text="取消"
             @confirm="handleDeleteModule"
           >
-            <a-button danger type="primary">删除模块</a-button>
+            <a-button danger type="primary" v-permission="'field:module:delete'">删除模块</a-button>
           </a-popconfirm>
         </a-space>
       </div>
@@ -31,8 +31,9 @@
         :loading="loadingFields"
         :pagination="false"
         size="middle"
-        row-key="code"
         :scroll="{ x: 'max-content' }"
+        @resizeColumn="onResizeColumn"
+        row-key="code"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'type'">
@@ -53,16 +54,16 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a-button size="small" type="link" @click="openEditFieldModal(record)">编辑</a-button>
+              <a-button size="small" type="link" @click="openEditFieldModal(record)" v-permission="'field:edit'">编辑</a-button>
               <template v-if="record.enabled !== false">
-                <a-popconfirm title="确认停用该字段?" @confirm="handleDisableField(record)">
+                <a-popconfirm v-if="hasPermission('field:disable')" title="确认停用该字段?" @confirm="handleDisableField(record)">
                   <a-button size="small" danger type="link">停用</a-button>
                 </a-popconfirm>
               </template>
               <template v-else>
-                <a-button size="small" type="link" @click="handleEnableField(record)">启用</a-button>
+                <a-button size="small" type="link" @click="handleEnableField(record)" v-permission="'field:enable'">启用</a-button>
               </template>
-              <a-popconfirm title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
+              <a-popconfirm v-if="hasPermission('field:delete')" title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
                 <a-button size="small" danger type="link">删除</a-button>
               </a-popconfirm>
             </a-space>
@@ -160,6 +161,9 @@ import {
 } from '../../api/businessModuleApi.js';
 import { listFields } from '../../api/templateApi.js';
 import { FIELD_DICT, FALLBACK_MODULES, BUILT_IN_MODULE_CODES } from '../../data/constants.js';
+import { usePermissionStore } from '../../stores/permission.js';
+
+const { hasPermission } = usePermissionStore();
 
 const activeType = ref('LOCATION');
 const modules = ref([]);
@@ -175,16 +179,21 @@ const moduleEditing = ref(false);
 const TYPE_LABEL = { string: '字符', number: '数值', integer: '整数', date: '日期' };
 
 
-const columns = [
-  { title: '中文名称', dataIndex: 'name', key: 'name', width: 140 },
-  { title: '字段编码', dataIndex: 'code', key: 'code', width: 180 },
-  { title: '类型', dataIndex: 'type', key: 'type', width: 70 },
+const columns = ref([
+  { title: '中文名称', dataIndex: 'name', key: 'name', resizable: true, width: 140 },
+  { title: '字段编码', dataIndex: 'code', key: 'code', resizable: true, width: 180 },
+  { title: '类型', dataIndex: 'type', key: 'type', resizable: true, width: 70 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 70 },
   { title: '状态', key: 'status', width: 70 },
-  { title: '示例值', key: 'example', width: 180 },
-  { title: '说明', dataIndex: 'desc', key: 'desc', ellipsis: true },
+  { title: '示例值', key: 'example', resizable: true, width: 180 },
+  { title: '说明', dataIndex: 'desc', key: 'desc', resizable: true, width: 200, ellipsis: true },
   { title: '操作', key: 'action', width: 140, fixed: 'right' },
-];
+]);
+
+function onResizeColumn(w, col) {
+  const idx = columns.value.findIndex(c => c.key === col.key);
+  if (idx >= 0) columns.value[idx].width = w;
+}
 
 const moduleForm = ref(emptyModuleForm());
 const fieldForm = ref(emptyFieldForm());

@@ -56,8 +56,8 @@
         <a-button type="primary" @click="handleCreate" v-permission="'template:create'">
           新增
         </a-button>
-        <a-button type="primary" :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('enabled')">启用</a-button>
-        <a-button type="primary" danger :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('disabled')">停用</a-button>
+        <a-button type="primary" :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('enabled')" v-permission="'template:enable'">启用</a-button>
+        <a-button type="primary" danger :disabled="!selectedRowKeys.length" @click="handleBatchToggleStatus('disabled')" v-permission="'template:disable'">停用</a-button>
       </div>
       <a-table
         :columns="columns"

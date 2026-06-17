@@ -36,6 +36,7 @@
 <script setup>
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { message } from 'ant-design-vue';
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue';
 import { usePermissionStore } from '../../stores/permission.js';
 
@@ -50,11 +51,14 @@ const form = reactive({
 
 async function handleLogin() {
   loading.value = true;
-  // Mock: 模拟网络延迟
-  await new Promise(r => setTimeout(r, 500));
-  store.login({ username: form.username, password: form.password });
-  loading.value = false;
-  router.push('/templates');
+  try {
+    await store.login({ username: form.username, password: form.password });
+    router.push('/templates');
+  } catch (e) {
+    message.error(e.message || '登录失败');
+  } finally {
+    loading.value = false;
+  }
 }
 </script>
 

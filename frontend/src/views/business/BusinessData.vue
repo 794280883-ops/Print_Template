@@ -31,7 +31,7 @@
         <a-button @click="handleImport" v-permission="'business:import'">
           <upload-outlined /> 导入
         </a-button>
-        <a-button @click="handleBatchPrint" :disabled="!selectedRowKeys.length">
+        <a-button @click="handleBatchPrint" :disabled="!selectedRowKeys.length" v-permission="'business:print'">
           <printer-outlined /> 打印 {{ selectedRowKeys.length ? `(${selectedRowKeys.length})` : '' }}
         </a-button>
       </a-space>
@@ -50,7 +50,8 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === codeFieldCode">
-            <a @click.prevent="handleEdit(record)">{{ record[codeFieldCode] }}</a>
+            <a v-if="hasPermission('business:edit')" @click.prevent="handleEdit(record)">{{ record[codeFieldCode] }}</a>
+            <span v-else>{{ record[codeFieldCode] }}</span>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-popconfirm title="确认删除?" @confirm="handleDelete(record)">
@@ -175,6 +176,9 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons-vue';
 import { listBusinessData, deleteBusinessData, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
+import { usePermissionStore } from '../../stores/permission.js';
+
+const { hasPermission } = usePermissionStore();
 import { listTemplates, getTemplate, downloadPrintPdf, listFields } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { FIELD_DICT, TYPE_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
