@@ -253,7 +253,7 @@ import {
 } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { searchBusinessData } from '../../api/businessDataApi.js';
-import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM, FALLBACK_MODULES, FIELD_DICT } from '../../data/constants.js';
+import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
 
 const router = useRouter();
 
@@ -399,14 +399,10 @@ function getPrintPreviewStyle(el) {
   };
 }
 
-const PREVIEW_ARROW_MAP = { '向上': '↑', '向下': '↓', '向左': '←', '向右': '→' };
-
 function getPreviewText(el) {
   if (el.type !== 'text') return '';
   if (el.textKind === 'field') {
-    const fields = FIELD_DICT[previewTemplate.value?.templateType] || [];
-    const f = fields.find(x => x.code === el.bindField);
-    if (f && f.enumOptions) return f.enumOptions.map(v => PREVIEW_ARROW_MAP[v] || v).join('');
+    if (el.bindField === 'directionMark') return '↑↓';
     return `[${el.bindField || '未绑定'}]`;
   }
   return el.text || '静态文本';

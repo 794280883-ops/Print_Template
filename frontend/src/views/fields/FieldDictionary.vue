@@ -122,7 +122,6 @@
             <a-select-option value="number">数值</a-select-option>
             <a-select-option value="integer">整数</a-select-option>
             <a-select-option value="date">日期</a-select-option>
-            <a-select-option value="select">枚举</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item>
@@ -133,9 +132,6 @@
         </a-form-item>
         <a-form-item label="示例值">
           <a-input v-model:value="fieldForm.example" />
-        </a-form-item>
-        <a-form-item v-if="fieldForm.type === 'select'" label="枚举选项">
-          <a-input v-model:value="fieldForm.enumOptionsText" placeholder="选项以逗号分隔，如：A,B,C" />
         </a-form-item>
         <a-form-item label="排序">
           <a-input-number v-model:value="fieldForm.sortNo" :min="0" style="width:100%" />
@@ -176,7 +172,7 @@ const fieldEditing = ref(false);
 const fieldEditingCode = ref('');
 const moduleEditing = ref(false);
 
-const TYPE_LABEL = { string: '字符', number: '数值', integer: '整数', date: '日期', select: '枚举' };
+const TYPE_LABEL = { string: '字符', number: '数值', integer: '整数', date: '日期' };
 
 
 const columns = [
@@ -251,7 +247,6 @@ function emptyFieldForm() {
     type: 'string',
     required: false,
     sortable: false,
-    enumOptionsText: '',
     example: '',
     desc: '',
     sortNo: 0,
@@ -294,7 +289,6 @@ function openEditFieldModal(record) {
     type: record.type || 'string',
     required: !!record.required,
     sortable: !!record.sortable,
-    enumOptionsText: Array.isArray(record.enumOptions) ? record.enumOptions.join(',') : '',
     example: record.example || '',
     desc: record.desc || '',
     sortNo: Number(record.sortNo || 0),
@@ -381,7 +375,6 @@ async function handleSaveField() {
       type: form.type,
       required: !!form.required,
       sortable: !!form.sortable,
-      enumOptions: form.enumOptionsText ? form.enumOptionsText.split(',').map(s => s.trim()).filter(Boolean) : null,
       example: form.example.trim(),
       desc: form.desc.trim(),
       sortNo: Number(form.sortNo || 0),

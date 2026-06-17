@@ -2,7 +2,7 @@ import { pool } from "../config/db.js";
 
 export async function listFields(moduleCode) {
   const [rows] = await pool.query(
-    `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable, enum_options
+    `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable
      FROM print_field_dict
      WHERE module_code = ?
      ORDER BY enabled DESC, sort_no ASC, id ASC`,
@@ -14,8 +14,8 @@ export async function listFields(moduleCode) {
 export async function createField(moduleCode, field) {
   await pool.query(
     `INSERT INTO print_field_dict
-       (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable, enum_options)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+       (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     [
       String(moduleCode || "").toUpperCase(),
       field.code,
@@ -27,7 +27,6 @@ export async function createField(moduleCode, field) {
       field.sortNo || 0,
       field.searchable ? 1 : 0,
       field.sortable ? 1 : 0,
-      field.enumOptions ? JSON.stringify(field.enumOptions) : null,
     ],
   );
   return getField(moduleCode, field.code);
@@ -35,7 +34,7 @@ export async function createField(moduleCode, field) {
 
 async function getField(moduleCode, fieldCode) {
   const [rows] = await pool.query(
-    `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable, enum_options
+    `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable
      FROM print_field_dict
      WHERE module_code = ? AND field_code = ?
      LIMIT 1`,
@@ -48,7 +47,7 @@ export async function updateField(moduleCode, fieldCode, field) {
   await pool.query(
     `UPDATE print_field_dict
      SET field_name = ?, field_type = ?, example_value = ?, is_required = ?, description = ?, sort_no = ?,
-         searchable = ?, sortable = ?, enum_options = ?
+         searchable = ?, sortable = ?
      WHERE module_code = ? AND field_code = ?`,
     [
       field.name,
@@ -59,7 +58,6 @@ export async function updateField(moduleCode, fieldCode, field) {
       field.sortNo || 0,
       field.searchable ? 1 : 0,
       field.sortable ? 1 : 0,
-      field.enumOptions ? JSON.stringify(field.enumOptions) : null,
       String(moduleCode || "").toUpperCase(),
       fieldCode,
     ],

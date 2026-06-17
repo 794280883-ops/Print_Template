@@ -254,8 +254,6 @@ import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../
 import { validateTemplateDsl } from '../../services/validationService.js';
 import { getPrintableTemplate } from '../../services/printRotationService.js';
 
-const ARROW_MAP = { '向上': '↑', '向下': '↓', '向左': '←', '向右': '→' };
-
 const route = useRoute();
 const router = useRouter();
 
@@ -433,7 +431,7 @@ function getTextDisplay(el) {
   if (el.textKind === 'field') {
     const f = currentFields.value.find(x => x.code === el.bindField);
     if (!f) return el.bindField || '未绑定';
-    if (f.enumOptions) return f.enumOptions.map(v => ARROW_MAP[v] || v).join('');
+    if (el.bindField === 'directionMark') return '↑↓';
     return f.name;
   }
   return el.text ?? '静态文本';

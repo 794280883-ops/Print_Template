@@ -66,10 +66,7 @@
       <a-form layout="vertical" v-if="editRecord">
         <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
-            <a-select v-if="f.type === 'select' && f.enumOptions" v-model:value="editFields[f.code]" allow-clear :placeholder="'请选择' + f.name">
-              <a-select-option v-for="opt in f.enumOptions" :key="opt" :value="opt">{{ opt }}</a-select-option>
-            </a-select>
-            <a-input-number v-else-if="f.type === 'integer'" v-model:value="editFields[f.code]" :precision="0" style="width:100%" />
+            <a-input-number v-if="f.type === 'integer'" v-model:value="editFields[f.code]" :precision="0" style="width:100%" />
             <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" style="width:100%" />
             <a-date-picker v-else-if="f.type === 'date'" v-model:value="editFields[f.code]" style="width:100%" />
             <a-input v-else v-model:value="editFields[f.code]" />
@@ -449,13 +446,10 @@ function printFileName(templateType) {
   return `${templateType || 'PRINT'}_${y}${m}${d}${seq}.pdf`;
 }
 
-const PREVIEW_ARROW_MAP = { '向上': '↑', '向下': '↓', '向左': '←', '向右': '→' };
-
 function getTemplatePreviewText(el) {
   if (el.type !== 'text') return '';
   if (el.textKind === 'field') {
-    const f = currentFields.value.find(x => x.code === el.bindField);
-    if (f && f.enumOptions) return f.enumOptions.map(v => PREVIEW_ARROW_MAP[v] || v).join('');
+    if (el.bindField === 'directionMark') return '↑↓';
     return `[${el.bindField || '未绑定'}]`;
   }
   return el.text || '静态文本';
