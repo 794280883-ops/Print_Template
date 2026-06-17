@@ -18,11 +18,31 @@ echo "Deploying branch '$BRANCH' to $SERVER_USER@$SERVER_HOST:$SERVER_DIR"
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
 set -e
 cd '$SERVER_DIR'
-git fetch origin '$BRANCH'
+git fetch origin '$BRANCH' 2>/dev/null || true
 git checkout '$BRANCH'
-git pull --ff-only origin '$BRANCH'
-docker compose up -d --build
+git pull --ff-only origin '$BRANCH' 2>/dev/null || true
+
+CHANGED=\$(git diff --name-only HEAD~1 2>/dev/null || echo '')
+BUILD_BACKEND=0
+BUILD_FRONTEND=0
+
+if echo \"\$CHANGED\" | grep -q '^backend/'; then BUILD_BACKEND=1; fi
+if echo \"\$CHANGED\" | grep -q '^frontend/'; then BUILD_FRONTEND=1; fi
+if echo \"\$CHANGED\" | grep -q '^nginx/\|^docker-compose'; then BUILD_BACKEND=1; BUILD_FRONTEND=1; fi
+[ -z \"\$CHANGED\" ] && { BUILD_BACKEND=1; BUILD_FRONTEND=1; }
+
+if [ \"\$BUILD_BACKEND\" = '1' ] && [ \"\$BUILD_FRONTEND\" = '1' ]; then
+  DOCKER_BUILDKIT=1 docker compose up -d --build
+elif [ \"\$BUILD_BACKEND\" = '1' ]; then
+  DOCKER_BUILDKIT=1 docker compose up -d --build backend
+elif [ \"\$BUILD_FRONTEND\" = '1' ]; then
+  DOCKER_BUILDKIT=1 docker compose up -d --build frontend
+else
+  docker compose up -d --force-recreate
+fi
+
 docker compose ps
+sleep 3
 curl -fsSk https://127.0.0.1/api/v1/health
 "
 
