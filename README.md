@@ -111,33 +111,36 @@ wms-print-template-center/
 
 ## 字段映射参考
 
-### 库位 (LOCATION → location)
+所有业务数据统一存储在 `business_record` 表中，字段为 JSON 键值对。字段 schema 由 `print_field_dict` + `print_business_module` 运行时动态编译，无需硬编码映射。
 
-| 前端字段 | 数据库列 | 必填 |
-|----------|----------|------|
-| locationCode | location_code | 是 |
-| locationPrefix | location_prefix | — |
-| row | location_row | — |
-| column | location_column | — |
-| level | location_floor | — |
-| directionMark | direction_flag | — |
-| warehouseCode | region_warehouse_code | — |
-| areaCode | physics_warehouse_code | — |
+### 库位 (LOCATION)
 
-### 容器 (CONTAINER → container)
+| 字段编码 | 名称 | 必填 |
+|----------|------|------|
+| locationCode | 库位编码 | 是 |
+| locationPrefix | 库位前缀 | — |
+| row | 排 | — |
+| column | 列 | — |
+| level | 层 | — |
+| directionMark | 方向标 | — |
+| warehouseCode | 区域仓编码 | 是 |
+| areaCode | 物理仓编码 | — |
 
-| 前端字段 | 数据库列 | 必填 |
-|----------|----------|------|
-| containerCode | container_code | 是 |
-| warehouseCode | region_warehouse_code | — |
-| areaCode | physics_warehouse_code | — |
+### 容器 (CONTAINER)
 
-### 商品 (PRODUCT → product)
+| 字段编码 | 名称 | 必填 |
+|----------|------|------|
+| containerCode | 容器编码 | 是 |
+| warehouseCode | 区域仓编码 | — |
+| areaCode | 物理仓编码 | — |
 
-| 前端字段 | 数据库列 | 必填 |
-|----------|----------|------|
-| productCode | sku | 是 |
-| customerProductCode | customer_code | — |
+### 商品 (PRODUCT)
+
+| 字段编码 | 名称 | 必填 |
+|----------|------|------|
+| productCode | 商品编码 | 是 |
+| ProductBarcode | 商品条码 | — |
+| customerProductCode | 客户商品编码 | — |
 
 ### 方向标规则
 
@@ -161,6 +164,7 @@ git status --short --branch
 ## 后续计划
 
 - ~~域名备案和 HTTPS~~ ✅ 已配置 Let's Encrypt 证书，customprint.icu
+- ~~统一后端平台~~ ✅ business_record 单表 + 运行时 schema
 - 登录鉴权和权限控制
 - 操作日志审计增强
 - 数据备份策略
