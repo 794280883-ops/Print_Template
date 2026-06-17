@@ -253,6 +253,7 @@ import { getTemplate, updateTemplate, listFields } from '../../api/templateApi.j
 import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
 import { validateTemplateDsl } from '../../services/validationService.js';
 import { getPrintableTemplate } from '../../services/printRotationService.js';
+import { loadTemplateForDesigner, normalizeTemplateType, resolveTemplateFields } from './templateDesignerLoader.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -308,7 +309,7 @@ const selectedElement = computed(() => {
 
 const currentFields = computed(() => {
   if (!template.value) return [];
-  return fieldsByType.value[template.value.templateType] || FIELD_DICT[template.value.templateType] || [];
+  return resolveTemplateFields(template.value.templateType, fieldsByType.value, FIELD_DICT);
 });
 
 const canvasStyle = computed(() => {
@@ -741,33 +742,49 @@ function handleKeyDown(event) {
 }
 
 // ── Lifecycle ──
-onMounted(async () => {
+let loadVersion = 0;
+
+async function loadDesignerTemplate(id) {
+  if (!id) return;
+  const version = ++loadVersion;
   loading.value = true;
   try {
-    const id = route.params.id;
-    const tpl = await getTemplate(id);
+    const tpl = await loadTemplateForDesigner(id, { getTemplate, fetchFields });
+    if (version !== loadVersion) return;
     template.value = tpl;
-    await fetchFields(tpl.templateType);
     templateWidth.value = tpl.size.width;
     templateHeight.value = tpl.size.height;
     if (tpl.elements?.length) selectedElementId.value = tpl.elements[0].id;
+    else selectedElementId.value = null;
+    history.value = [];
+    future.value = [];
+    validation.value = { errors: [], warnings: [], tips: [], canPublish: false };
   } catch (error) {
+    if (version !== loadVersion) return;
     message.error(`加载模板失败：${error.message}`);
   } finally {
-    loading.value = false;
+    if (version === loadVersion) loading.value = false;
   }
+}
+
+watch(() => route.params.id, (id) => {
+  loadDesignerTemplate(id);
+}, { immediate: true });
+
+onMounted(() => {
   document.addEventListener('keydown', handleKeyDown);
 });
 
 async function fetchFields(templateType) {
-  if (!templateType || fieldsByType.value[templateType]) return;
+  const normalizedType = normalizeTemplateType(templateType);
+  if (!normalizedType) return;
   try {
     fieldsByType.value = {
       ...fieldsByType.value,
-      [templateType]: await listFields(templateType),
+      [normalizedType]: await listFields(normalizedType),
     };
   } catch {
-    if (!FIELD_DICT[templateType]) message.warning('模板字段加载失败');
+    if (!FIELD_DICT[normalizedType]) message.warning('模板字段加载失败');
   }
 }
 

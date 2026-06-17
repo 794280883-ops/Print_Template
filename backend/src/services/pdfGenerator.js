@@ -2,9 +2,7 @@ import PDFDocument from "pdfkit";
 import bwipjs from "bwip-js";
 import QRCode from "qrcode";
 import { Buffer } from "node:buffer";
-
-// mm to PDF points (1 mm = 72 / 25.4 points ≈ 2.8346)
-const MM_TO_PT = 72 / 25.4;
+import { cssPxToPdfPt, elementBoxToPdfPoints, getTextLayout, MM_TO_PT } from "./pdfLayout.js";
 
 // macOS full CJK font (TTF format required for pdfkit; subset fonts like Hei/Kai have broken cmap)
 const CJK_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf";
@@ -80,15 +78,12 @@ async function renderPage(doc, elements, data, templateSize, ensureCjkFont) {
 }
 
 async function renderElement(doc, el, data, ensureCjkFont) {
-  const x = el.x * MM_TO_PT;
-  const y = el.y * MM_TO_PT;
-  const w = el.width * MM_TO_PT;
-  const h = el.height * MM_TO_PT;
+  const { x, y, w, h } = elementBoxToPdfPoints(el);
 
-  // Handle rotation around element center
-  // IMPORTANT: pdfkit rotate(angle) uses RADIANS, but rotate(angle, {origin}) uses DEGREES
+  doc.save();
+
   if (el.rotate) {
-    doc.save();
+    // pdfkit rotate(angle, { origin }) uses degrees.
     doc.rotate(el.rotate, { origin: [x + w / 2, y + h / 2] });
   }
 
@@ -121,9 +116,7 @@ async function renderElement(doc, el, data, ensureCjkFont) {
   } catch (err) {
     // Log but continue rendering other elements
     console.error(`Error rendering element ${el.id} (${el.type}):`, err.message);
-  }
-
-  if (el.rotate) {
+  } finally {
     doc.restore();
   }
 }
@@ -148,7 +141,6 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
 
   const value = dirArrow(rawValue);
 
-  const fontSize = el.fontSize || 12;
   const color = el.color || "#111827";
 
   // Use CJK font for Chinese text; fall back to Helvetica if unavailable
@@ -164,24 +156,13 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
     doc.font("Helvetica");
   }
 
-  doc.fontSize(fontSize).fillColor(color);
-
-  const textHeight = fontSize * 1.2;
-  const textY = y + (h - textHeight) / 2;
-
-  const align = el.align || "left";
-
-  // Calculate x position for center/right alignment
-  const textWidth = doc.widthOfString(value);
-  let textX = x;
-  if (align === "center") textX = x + (w - textWidth) / 2;
-  else if (align === "right") textX = x + w - textWidth;
-
-  doc.text(value, textX, textY, { lineBreak: false });
+  const layout = getTextLayout(el, { x, y, w, h });
+  doc.fontSize(layout.fontSize).fillColor(color);
+  doc.text(value, layout.x, layout.y, layout.options);
 
   // Simulate bold for CJK fonts by re-rendering with slight horizontal spread
   if (el.bold) {
-    doc.text(value, textX + 0.5, textY, { lineBreak: false });
+    doc.text(value, layout.x + 0.35, layout.y, layout.options);
   }
 }
 
@@ -200,9 +181,7 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
       scale: 5,
       height: heightMm,
       width: widthMm,
-      includetext: true,
-      textxalign: "center",
-      textsize: 10,
+      includetext: false,
       paddingwidth: 0,
       paddingheight: 0,
     });
@@ -263,7 +242,7 @@ function renderRect(doc, el, x, y, w, h) {
   const bgColor = el.backgroundColor || "#eaf4ff";
   const strokeColor = el.color || "#111827";
 
-  doc.rect(x, y, w, h).fillAndStroke(bgColor, strokeColor);
+  doc.lineWidth(cssPxToPdfPt(1)).rect(x, y, w, h).fillAndStroke(bgColor, strokeColor);
 }
 
 // ── Image ───────────────────────────────────────────
@@ -290,12 +269,12 @@ async function renderImage(doc, el, x, y, w, h) {
 
 // ── Checkbox ────────────────────────────────────────
 function renderCheckbox(doc, el, x, y, w, h, ensureCjkFont) {
-  const boxSize = Math.min(h, 12);
+  const boxSize = Math.min(h, cssPxToPdfPt(16));
   const boxX = x;
   const boxY = y + (h - boxSize) / 2;
 
   // Draw box
-  doc.rect(boxX, boxY, boxSize, boxSize).stroke("#111827");
+  doc.lineWidth(cssPxToPdfPt(2)).rect(boxX, boxY, boxSize, boxSize).stroke("#111827");
 
   // Draw checkmark if checked
   if (el.checked) {
@@ -320,7 +299,9 @@ function renderCheckbox(doc, el, x, y, w, h, ensureCjkFont) {
     if (!cjkFontAvailable) {
       doc.font("Helvetica");
     }
-    doc.fontSize(el.fontSize || 10).fillColor(el.color || "#111827")
-      .text(el.text, textX, y, { width: textW, height: h, ellipsis: true });
+    const fontSize = cssPxToPdfPt(12);
+    const textY = y + Math.max(0, (h - fontSize * 1.2) / 2);
+    doc.fontSize(fontSize).fillColor(el.color || "#111827")
+      .text(el.text, textX, textY, { width: textW, height: h, ellipsis: true, lineBreak: false });
   }
 }
