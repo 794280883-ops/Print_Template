@@ -1,23 +1,23 @@
 import { pool } from "../config/db.js";
 
-export async function listFields(templateType) {
+export async function listFields(moduleCode) {
   const [rows] = await pool.query(
-    `SELECT template_type, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled
+    `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled
      FROM print_field_dict
-     WHERE template_type = ?
+     WHERE module_code = ?
      ORDER BY enabled DESC, sort_no ASC, id ASC`,
-    [String(templateType || "").toUpperCase()],
+    [String(moduleCode || "").toUpperCase()],
   );
   return rows;
 }
 
-export async function createField(templateType, field) {
+export async function createField(moduleCode, field) {
   await pool.query(
     `INSERT INTO print_field_dict
-       (template_type, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled)
+       (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     [
-      String(templateType || "").toUpperCase(),
+      String(moduleCode || "").toUpperCase(),
       field.code,
       field.name,
       field.type,
@@ -27,25 +27,25 @@ export async function createField(templateType, field) {
       field.sortNo || 0,
     ],
   );
-  return getField(templateType, field.code);
+  return getField(moduleCode, field.code);
 }
 
-async function getField(templateType, fieldCode) {
+async function getField(moduleCode, fieldCode) {
   const [rows] = await pool.query(
-    `SELECT template_type, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled
+    `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled
      FROM print_field_dict
-     WHERE template_type = ? AND field_code = ?
+     WHERE module_code = ? AND field_code = ?
      LIMIT 1`,
-    [String(templateType || "").toUpperCase(), fieldCode],
+    [String(moduleCode || "").toUpperCase(), fieldCode],
   );
   return rows[0] || null;
 }
 
-export async function updateField(templateType, fieldCode, field) {
+export async function updateField(moduleCode, fieldCode, field) {
   await pool.query(
     `UPDATE print_field_dict
      SET field_name = ?, field_type = ?, example_value = ?, is_required = ?, description = ?, sort_no = ?
-     WHERE template_type = ? AND field_code = ?`,
+     WHERE module_code = ? AND field_code = ?`,
     [
       field.name,
       field.type,
@@ -53,49 +53,49 @@ export async function updateField(templateType, fieldCode, field) {
       field.required ? 1 : 0,
       field.desc || null,
       field.sortNo || 0,
-      String(templateType || "").toUpperCase(),
+      String(moduleCode || "").toUpperCase(),
       fieldCode,
     ],
   );
-  return getField(templateType, fieldCode);
+  return getField(moduleCode, fieldCode);
 }
 
-export async function countFieldReferences(templateType, fieldCode) {
+export async function countFieldReferences(moduleCode, fieldCode) {
   const [rows] = await pool.query(
     `SELECT COUNT(*) AS total
      FROM print_template_element e
      INNER JOIN print_template t ON t.id = e.template_id
      WHERE t.template_type = ? AND e.bind_field = ?`,
-    [String(templateType || "").toUpperCase(), fieldCode],
+    [String(moduleCode || "").toUpperCase(), fieldCode],
   );
   return Number(rows[0]?.total || 0);
 }
 
-export async function disableField(templateType, fieldCode) {
+export async function disableField(moduleCode, fieldCode) {
   const [result] = await pool.query(
     `UPDATE print_field_dict
      SET enabled = 0
-     WHERE template_type = ? AND field_code = ?`,
-    [String(templateType || "").toUpperCase(), fieldCode],
+     WHERE module_code = ? AND field_code = ?`,
+    [String(moduleCode || "").toUpperCase(), fieldCode],
   );
   return result.affectedRows;
 }
 
-export async function enableField(templateType, fieldCode) {
+export async function enableField(moduleCode, fieldCode) {
   const [result] = await pool.query(
     `UPDATE print_field_dict
      SET enabled = 1
-     WHERE template_type = ? AND field_code = ?`,
-    [String(templateType || "").toUpperCase(), fieldCode],
+     WHERE module_code = ? AND field_code = ?`,
+    [String(moduleCode || "").toUpperCase(), fieldCode],
   );
   return result.affectedRows;
 }
 
-export async function deleteField(templateType, fieldCode) {
+export async function deleteField(moduleCode, fieldCode) {
   const [result] = await pool.query(
     `DELETE FROM print_field_dict
-     WHERE template_type = ? AND field_code = ?`,
-    [String(templateType || "").toUpperCase(), fieldCode],
+     WHERE module_code = ? AND field_code = ?`,
+    [String(moduleCode || "").toUpperCase(), fieldCode],
   );
   return result.affectedRows;
 }

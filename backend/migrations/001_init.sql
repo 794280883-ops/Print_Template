@@ -1,24 +1,45 @@
+-- ============================================================
+-- 001_init.sql — unified backend platform complete schema + seeds
+-- ============================================================
+
+-- Drop all old/replaced tables (cascade handles FK deps)
+DROP TABLE IF EXISTS print_template_element;
+DROP TABLE IF EXISTS print_log;
+DROP TABLE IF EXISTS operation_log;
+DROP TABLE IF EXISTS business_data;
+DROP TABLE IF EXISTS product;
+DROP TABLE IF EXISTS container;
+DROP TABLE IF EXISTS location;
+DROP TABLE IF EXISTS print_business_data;
+DROP TABLE IF EXISTS print_field_dict;
+DROP TABLE IF EXISTS business_record;
+DROP TABLE IF EXISTS print_business_module;
+DROP TABLE IF EXISTS print_template;
+
+-- 1. template
 CREATE TABLE IF NOT EXISTS print_template (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  template_code VARCHAR(64) NOT NULL UNIQUE COMMENT '模板编码',
-  template_name VARCHAR(128) NOT NULL COMMENT '模板名称',
-  template_type VARCHAR(32) NOT NULL COMMENT '模板类型：LOCATION/CONTAINER/PRODUCT',
+  template_code VARCHAR(64) NOT NULL UNIQUE,
+  template_name VARCHAR(128) NOT NULL,
+  template_type VARCHAR(32) NOT NULL,
   width_mm DECIMAL(10,2) NOT NULL,
   height_mm DECIMAL(10,2) NOT NULL,
   unit VARCHAR(16) NOT NULL DEFAULT 'mm',
   dpi INT NOT NULL DEFAULT 203,
-  print_rotation INT NOT NULL DEFAULT 0 COMMENT '打印整体旋转角度：0/90/180/270',
-  status VARCHAR(32) NOT NULL DEFAULT 'disabled' COMMENT 'enabled/disabled',
+  print_rotation INT NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'disabled',
   remark VARCHAR(512),
+  field_preview_values JSON,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_template_type_status (template_type, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 2. template element
 CREATE TABLE IF NOT EXISTS print_template_element (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   template_id BIGINT NOT NULL,
-  element_uid VARCHAR(64) NOT NULL COMMENT '前端 DSL 元素 ID',
-  element_type VARCHAR(32) NOT NULL COMMENT 'text/qrcode/barcode/image/line/rect',
+  element_uid VARCHAR(64) NOT NULL,
+  element_type VARCHAR(32) NOT NULL,
   x DECIMAL(10,2) NOT NULL,
   y DECIMAL(10,2) NOT NULL,
   width DECIMAL(10,2) NOT NULL,
@@ -38,9 +59,10 @@ CREATE TABLE IF NOT EXISTS print_template_element (
   CONSTRAINT fk_template_element_template FOREIGN KEY (template_id) REFERENCES print_template(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 3. field dictionary
 CREATE TABLE IF NOT EXISTS print_field_dict (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  template_type VARCHAR(32) NOT NULL,
+  module_code VARCHAR(32) NOT NULL,
   field_code VARCHAR(128) NOT NULL,
   field_name VARCHAR(128) NOT NULL,
   field_type VARCHAR(32) NOT NULL DEFAULT 'string',
@@ -49,9 +71,13 @@ CREATE TABLE IF NOT EXISTS print_field_dict (
   description VARCHAR(512),
   sort_no INT DEFAULT 0,
   enabled TINYINT(1) NOT NULL DEFAULT 1,
-  UNIQUE KEY uk_type_field (template_type, field_code)
+  searchable TINYINT DEFAULT 0,
+  sortable TINYINT DEFAULT 0,
+  bindable_in_template TINYINT DEFAULT 1,
+  UNIQUE KEY uk_type_field (module_code, field_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 4. print log
 CREATE TABLE IF NOT EXISTS print_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   template_id BIGINT,
@@ -60,15 +86,13 @@ CREATE TABLE IF NOT EXISTS print_log (
   business_no VARCHAR(128),
   warehouse_code VARCHAR(64),
   print_payload JSON,
-  print_status VARCHAR(32) NOT NULL COMMENT 'success/failed',
+  print_status VARCHAR(32) NOT NULL,
   error_message VARCHAR(1024),
   operator VARCHAR(64),
-  printed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_template_code (template_code),
-  INDEX idx_business_no (business_no),
-  INDEX idx_printed_at (printed_at)
+  printed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 5. operation log
 CREATE TABLE IF NOT EXISTS operation_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   module_name VARCHAR(64) NOT NULL,
@@ -79,29 +103,78 @@ CREATE TABLE IF NOT EXISTS operation_log (
   before_json JSON,
   after_json JSON,
   operator VARCHAR(64),
-  operated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_module_action (module_name, action_name),
-  INDEX idx_operated_at (operated_at)
+  operated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT IGNORE INTO print_field_dict
-  (template_type, field_code, field_name, field_type, example_value, is_required, description, sort_no)
+-- 6. business module
+CREATE TABLE IF NOT EXISTS print_business_module (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  module_code VARCHAR(32) NOT NULL,
+  module_name VARCHAR(128) NOT NULL,
+  template_label VARCHAR(128) NOT NULL,
+  data_label VARCHAR(128) NOT NULL,
+  record_code_field VARCHAR(64) NOT NULL,
+  storage_mode VARCHAR(32) NOT NULL DEFAULT 'json_table',
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  sort_no INT NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_module_code (module_code),
+  INDEX idx_enabled_sort (enabled, sort_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 7. business record (UNIFIED table)
+CREATE TABLE IF NOT EXISTS business_record (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  module_code VARCHAR(32) NOT NULL,
+  record_code VARCHAR(128) NOT NULL,
+  record_data JSON NOT NULL,
+  search_text TEXT NULL,
+  status TINYINT NOT NULL DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_module_record (module_code, record_code),
+  INDEX idx_module_code (module_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ========== seeds ==========
+
+INSERT INTO print_business_module
+  (module_code, module_name, template_label, data_label, record_code_field, storage_mode, enabled, sort_no)
 VALUES
-  ('LOCATION','locationCode','库位编码','string','DD1801-004A',1,'库位唯一标识编码，由系统按规则自动生成或手动指定，全局唯一',10),
-  ('LOCATION','locationPrefix','库位前缀','string','TZ',0,'库位编码前缀，标识库区或货架分类，通常 2-4 位大写字母',20),
-  ('LOCATION','row','排','integer','12',0,'货架排号，整数，从 1 开始递增',30),
-  ('LOCATION','column','列','integer','89',0,'货架列号，整数，表示该排在仓库中的列位置',40),
-  ('LOCATION','level','层','string','B1',0,'货架层级标识，由字母+数字组成，如 A1、B2、C3',50),
-  ('LOCATION','directionMark','方向标','string','↑',0,'方向指示符，↑ ↓ ← → 表示货架朝向或存取方向',60),
-  ('LOCATION','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',70),
-  ('LOCATION','areaCode','物理仓编码','string','JP01',0,'物理仓编码',80),
-  ('CONTAINER','containerCode','容器编码','string','C2P0001',1,'容器唯一编码，前缀 C2P 表示二级包装容器，后跟流水号',10),
-  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',0,'区域仓编码',20),
-  ('CONTAINER','areaCode','物理仓编码','string','JP01',0,'物理仓编码',30),
-  ('CONTAINER','purpose','用途','string','入库周转',0,'容器标签用途',40),
-  ('CONTAINER','usageScene','使用场景','string','入库收货',0,'容器标签适用的业务使用场景',50),
-  ('PRODUCT','productCode','商品编码','string','SKU-10001',1,'商品编码',10),
-  ('PRODUCT','customerProductCode','客户商品编码','string','CUST-SKU-10001',0,'客户商品编码',20);
+  ('LOCATION', '库位', '库位模板', '库位数据', 'locationCode', 'json_table', 1, 10),
+  ('CONTAINER', '容器', '容器模板', '容器数据', 'containerCode', 'json_table', 1, 20),
+  ('PRODUCT', '商品', '商品模板', '商品数据', 'productCode', 'json_table', 1, 30)
+ON DUPLICATE KEY UPDATE
+  module_name = VALUES(module_name),
+  template_label = VALUES(template_label),
+  data_label = VALUES(data_label),
+  record_code_field = VALUES(record_code_field),
+  storage_mode = VALUES(storage_mode),
+  enabled = VALUES(enabled),
+  sort_no = VALUES(sort_no);
+
+INSERT INTO print_field_dict
+  (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, searchable, sortable)
+VALUES
+  ('LOCATION','locationCode','库位编码','string','DD1801-004A',1,'库位唯一标识编码',10,1,1),
+  ('LOCATION','locationPrefix','库位前缀','string','TZ',0,'库位编码前缀',20,1,1),
+  ('LOCATION','row','排','string','12',0,'货架排号',30,0,0),
+  ('LOCATION','column','列','string','89',0,'货架列号',40,0,0),
+  ('LOCATION','level','层','string','B1',0,'货架层级标识',50,0,0),
+  ('LOCATION','directionMark','方向标','string','↑',0,'方向指示符',60,0,0),
+  ('LOCATION','warehouseCode','区域仓编码','string','JP-TYO-01',1,'区域仓编码',70,1,1),
+  ('LOCATION','areaCode','物理仓编码','string','JP01',0,'物理仓编码',80,1,1),
+  ('CONTAINER','containerCode','容器编码','string','C2P0001',1,'容器编码',10,1,1),
+  ('CONTAINER','warehouseCode','区域仓编码','string','JP-TYO-01',0,'区域仓编码',20,1,1),
+  ('CONTAINER','areaCode','物理仓编码','string','JP01',0,'物理仓编码',30,1,1),
+  ('PRODUCT','productCode','商品编码','string','SKU-10001',1,'商品编码',10,1,1),
+  ('PRODUCT','ProductBarcode','商品条码','string','TM001',0,'商品条码',15,1,1),
+  ('PRODUCT','customerProductCode','客户商品编码','string','CUST-SKU-10001',0,'客户商品编码',20,1,1)
+ON DUPLICATE KEY UPDATE
+  field_name = VALUES(field_name), field_type = VALUES(field_type),
+  example_value = VALUES(example_value), is_required = VALUES(is_required),
+  description = VALUES(description), sort_no = VALUES(sort_no),
+  searchable = VALUES(searchable), sortable = VALUES(sortable);
 
 INSERT IGNORE INTO print_template
   (id, template_code, template_name, template_type, width_mm, height_mm, unit, dpi, status, remark)
@@ -124,8 +197,4 @@ VALUES
   (2,'container_area','text',8,39,55,6,5,0,'field',NULL,'areaCode',8,0,'left','#334155','transparent',JSON_OBJECT()),
   (3,'picking_title','text',7,8,86,10,1,0,'static','PICKING CONTAINER',NULL,18,1,'center','#111827','transparent',JSON_OBJECT()),
   (3,'picking_code','text',12,28,76,14,2,0,'field',NULL,'containerCode',28,1,'center','#111827','transparent',JSON_OBJECT()),
-  (3,'picking_barcode','barcode',12,48,76,22,3,0,NULL,NULL,'containerCode',NULL,0,NULL,NULL,NULL,JSON_OBJECT()),
-  (3,'picking_purpose','text',12,78,38,10,4,0,'field',NULL,'purpose',16,1,'left','#111827','transparent',JSON_OBJECT());
-
-INSERT IGNORE INTO operation_log (module_name, action_name, target_type, target_id, target_name, before_json, after_json, operator)
-VALUES ('print_template','系统初始化','print_template',NULL,'预置模板',NULL,JSON_OBJECT('templateCount', 3),'Admin');
+  (3,'picking_barcode','barcode',12,48,76,22,3,0,NULL,NULL,'containerCode',NULL,0,NULL,NULL,NULL,JSON_OBJECT());

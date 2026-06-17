@@ -1,0 +1,83 @@
+import { pool } from "../config/db.js";
+
+export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sortField, sortDir } = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeSize = Math.min(200, Math.max(1, Number(pageSize) || 20));
+  const offset = (safePage - 1) * safeSize;
+
+  let where = "WHERE module_code = ?";
+  const params = [moduleCode];
+
+  if (keyword) {
+    where += " AND search_text LIKE ?";
+    params.push(`%${keyword}%`);
+  }
+
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM business_record ${where}`,
+    params,
+  );
+
+  let orderClause = "ORDER BY updated_at DESC";
+  if (sortField && sortDir) {
+    const dir = sortDir.toUpperCase() === "ASC" ? "ASC" : "DESC";
+    orderClause = `ORDER BY JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${sortField}"')) ${dir}`;
+  }
+
+  const [rows] = await pool.query(
+    `SELECT * FROM business_record ${where} ${orderClause} LIMIT ? OFFSET ?`,
+    [...params, safeSize, offset],
+  );
+
+  return {
+    rows: rows.map(toDto),
+    total,
+    page: safePage,
+    pageSize: safeSize,
+  };
+}
+
+export async function getByCode(moduleCode, recordCode) {
+  const [rows] = await pool.query(
+    "SELECT * FROM business_record WHERE module_code = ? AND record_code = ? LIMIT 1",
+    [moduleCode, recordCode],
+  );
+  return rows[0] ? toDto(rows[0]) : null;
+}
+
+export async function create({ moduleCode, recordCode, recordData, searchText }) {
+  await pool.query(
+    `INSERT INTO business_record (module_code, record_code, record_data, search_text)
+     VALUES (?, ?, ?, ?)`,
+    [moduleCode, recordCode, JSON.stringify(recordData), searchText],
+  );
+  return getByCode(moduleCode, recordCode);
+}
+
+export async function update(moduleCode, recordCode, { recordData, searchText }) {
+  await pool.query(
+    `UPDATE business_record
+     SET record_data = ?, search_text = ?
+     WHERE module_code = ? AND record_code = ?`,
+    [JSON.stringify(recordData), searchText, moduleCode, recordCode],
+  );
+  return getByCode(moduleCode, recordCode);
+}
+
+export async function remove(moduleCode, recordCode) {
+  const [result] = await pool.query(
+    "DELETE FROM business_record WHERE module_code = ? AND record_code = ?",
+    [moduleCode, recordCode],
+  );
+  return result.affectedRows;
+}
+
+function toDto(row) {
+  return {
+    id: `${row.module_code}:${row.record_code}`,
+    businessType: row.module_code,
+    businessCode: row.record_code,
+    fields: typeof row.record_data === "string" ? JSON.parse(row.record_data) : row.record_data,
+    updatedAt: row.updated_at || "",
+  };
+}

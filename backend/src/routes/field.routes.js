@@ -4,4 +4,4 @@ import { asyncHandler } from "../middlewares/asyncHandler.js";
 
 export const fieldRouter = Router();
 
-fieldRouter.get("/template/fields/:templateType", asyncHandler(fieldController.listFields));
+fieldRouter.get("/template/fields/:moduleCode", asyncHandler(fieldController.listFields));

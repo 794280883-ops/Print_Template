@@ -1,15 +1,15 @@
 import * as fieldRepository from "../repositories/fieldRepository.js";
 import { appError } from "../utils/response.js";
 
-export async function listFields(templateType) {
-  const rows = await fieldRepository.listFields(templateType);
+export async function listFields(moduleCode) {
+  const rows = await fieldRepository.listFields(moduleCode);
   return rows.map(toDto);
 }
 
-export async function createField(templateType, payload = {}) {
+export async function createField(moduleCode, payload = {}) {
   const field = normalizeField(payload, { requireCode: true });
   try {
-    const created = await fieldRepository.createField(templateType, field);
+    const created = await fieldRepository.createField(moduleCode, field);
     return toDto(created);
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY") {
@@ -19,31 +19,31 @@ export async function createField(templateType, payload = {}) {
   }
 }
 
-export async function updateField(templateType, fieldCode, payload = {}) {
+export async function updateField(moduleCode, fieldCode, payload = {}) {
   const field = normalizeField(payload, { requireCode: false });
-  const updated = await fieldRepository.updateField(templateType, fieldCode, field);
+  const updated = await fieldRepository.updateField(moduleCode, fieldCode, field);
   if (!updated) throw appError("字段不存在", 40400, 404);
   return toDto(updated);
 }
 
-export async function disableField(templateType, fieldCode) {
-  const references = await fieldRepository.countFieldReferences(templateType, fieldCode);
+export async function disableField(moduleCode, fieldCode) {
+  const references = await fieldRepository.countFieldReferences(moduleCode, fieldCode);
   if (references > 0) throw appError("字段已被模板引用，不能停用", 40002, 409, { references });
-  const affectedRows = await fieldRepository.disableField(templateType, fieldCode);
+  const affectedRows = await fieldRepository.disableField(moduleCode, fieldCode);
   if (!affectedRows) throw appError("字段不存在", 40400, 404);
   return { disabled: true };
 }
 
-export async function enableField(templateType, fieldCode) {
-  const affectedRows = await fieldRepository.enableField(templateType, fieldCode);
+export async function enableField(moduleCode, fieldCode) {
+  const affectedRows = await fieldRepository.enableField(moduleCode, fieldCode);
   if (!affectedRows) throw appError("字段不存在", 40400, 404);
   return { enabled: true };
 }
 
-export async function deleteField(templateType, fieldCode) {
-  const references = await fieldRepository.countFieldReferences(templateType, fieldCode);
+export async function deleteField(moduleCode, fieldCode) {
+  const references = await fieldRepository.countFieldReferences(moduleCode, fieldCode);
   if (references > 0) throw appError("字段已被模板引用，不能删除", 40002, 409, { references });
-  const affectedRows = await fieldRepository.deleteField(templateType, fieldCode);
+  const affectedRows = await fieldRepository.deleteField(moduleCode, fieldCode);
   if (!affectedRows) throw appError("字段不存在", 40400, 404);
   return { deleted: true };
 }

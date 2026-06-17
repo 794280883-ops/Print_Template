@@ -15,13 +15,13 @@ export async function createModule(payload = {}) {
   const name = String(payload.name || "").trim();
   const templateLabel = String(payload.templateLabel || `${name}模板`).trim();
   const dataLabel = String(payload.dataLabel || `${name}数据`).trim();
-  const codeField = String(payload.codeField || "").trim();
+  const recordCodeField = String(payload.recordCodeField || "").trim();
   const fields = Array.isArray(payload.fields) ? payload.fields.map((field) => normalizeField(field, { requireCode: true })) : [];
 
   if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(code)) throw appError("模块编码需以大写字母开头，仅支持大写字母、数字、下划线，长度 2-32", 40000, 400);
   if (!name) throw appError("模块名称不能为空", 40000, 400);
-  if (!codeField) throw appError("主键字段不能为空", 40000, 400);
-  if (!fields.some((field) => field.code === codeField)) throw appError("主键字段必须存在于字段列表中", 40000, 400);
+  if (!recordCodeField) throw appError("主键字段不能为空", 40000, 400);
+  if (!fields.some((field) => field.code === recordCodeField)) throw appError("主键字段必须存在于字段列表中", 40000, 400);
 
   try {
     const created = await businessModuleRepository.createModule({
@@ -29,7 +29,7 @@ export async function createModule(payload = {}) {
       name,
       templateLabel,
       dataLabel,
-      codeField,
+      recordCodeField,
       storageMode: "json_table",
       sortNo: Number(payload.sortNo ?? 100) || 100,
     });
@@ -79,7 +79,8 @@ function toDto(row) {
     name: row.module_name,
     templateLabel: row.template_label,
     dataLabel: row.data_label,
-    codeField: row.code_field,
+    codeField: row.record_code_field,
+    recordCodeField: row.record_code_field,
     storageMode: row.storage_mode,
     enabled: Boolean(row.enabled),
     sortNo: Number(row.sort_no || 0),

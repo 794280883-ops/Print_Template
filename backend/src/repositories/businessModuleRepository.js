@@ -2,7 +2,7 @@ import { pool } from "../config/db.js";
 
 export async function listEnabledModules() {
   const [rows] = await pool.query(
-    `SELECT module_code, module_name, template_label, data_label, code_field, storage_mode, enabled, sort_no
+    `SELECT module_code, module_name, template_label, data_label, record_code_field, storage_mode, enabled, sort_no
      FROM print_business_module
      WHERE enabled = 1
      ORDER BY sort_no ASC, id ASC`,
@@ -12,7 +12,7 @@ export async function listEnabledModules() {
 
 export async function getModule(moduleCode) {
   const [rows] = await pool.query(
-    `SELECT module_code, module_name, template_label, data_label, code_field, storage_mode, enabled, sort_no
+    `SELECT module_code, module_name, template_label, data_label, record_code_field, storage_mode, enabled, sort_no
      FROM print_business_module
      WHERE module_code = ?
      LIMIT 1`,
@@ -24,14 +24,14 @@ export async function getModule(moduleCode) {
 export async function createModule(module) {
   await pool.query(
     `INSERT INTO print_business_module
-       (module_code, module_name, template_label, data_label, code_field, storage_mode, enabled, sort_no)
+       (module_code, module_name, template_label, data_label, record_code_field, storage_mode, enabled, sort_no)
      VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
     [
       module.code,
       module.name,
       module.templateLabel,
       module.dataLabel,
-      module.codeField,
+      module.recordCodeField,
       module.storageMode,
       module.sortNo,
     ],
