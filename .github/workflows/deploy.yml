@@ -11,12 +11,11 @@ jobs:
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@v1.3.0
         with:
           host: 47.113.118.74
           username: root
           key: ${{ secrets.WMS_DEPLOY_KEY }}
-          script_stop: true
           command_timeout: 12m
           script: |
             cd /opt/wms-print-template-center
