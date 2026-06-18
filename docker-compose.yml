@@ -29,6 +29,7 @@ services:
       DB_USER: root
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-wms_root_password}
       DB_NAME: ${MYSQL_DATABASE:-wms_print_template}
+      JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:8080}
     depends_on:
       mysql:

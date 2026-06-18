@@ -18,6 +18,7 @@ jobs:
           key: ${{ secrets.WMS_DEPLOY_KEY }}
           command_timeout: 12m
           script: |
+            set -e
             cd /opt/wms-print-template-center
 
             # Pull latest code (tolerate network flakes)
