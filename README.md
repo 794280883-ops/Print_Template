@@ -166,7 +166,7 @@ git status --short --branch
 - ~~域名备案和 HTTPS~~ ✅ 已配置 Let's Encrypt 证书，customprint.icu
 - ~~统一后端平台~~ ✅ business_record 单表 + 运行时 schema
 - ~~权限系统~~ ✅ RBAC 五表模型、按钮级权限管控
-- 登录鉴权和权限控制
+- ~~登录鉴权和权限控制~~ ✅ JWT 鉴权、路由守卫、v-permission 指令
 - 操作日志审计增强
 - 数据备份策略
 - 自动化测试
