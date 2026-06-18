@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { after } from "node:test";
 import test from "node:test";
+import bcrypt from "bcryptjs";
 import XLSX from "xlsx";
 import { createApp } from "../src/app.js";
 import { pool } from "../src/config/db.js";
 import { testDbPool } from "../src/config/testDb.js";
+
+const rawFetch = globalThis.fetch.bind(globalThis);
+const adminTokensByOrigin = new Map();
 
 after(async () => {
   await pool.end();
@@ -17,6 +21,46 @@ function listen(app) {
   });
 }
 
+async function login(port, username = "admin", password = "123456") {
+  const response = await rawFetch(`http://127.0.0.1:${port}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  return body.data.token;
+}
+
+async function createNoRoleUser(username, password = "123456") {
+  const passwordHash = await bcrypt.hash(password, 10);
+  await pool.query(
+    "INSERT INTO sys_user (username, password, nickname, status) VALUES (?, ?, ?, 1)",
+    [username, passwordHash, "无权限测试用户"],
+  );
+}
+
+async function getAdminToken(origin) {
+  if (!adminTokensByOrigin.has(origin)) {
+    const url = new URL(origin);
+    adminTokensByOrigin.set(origin, await login(url.port));
+  }
+  return adminTokensByOrigin.get(origin);
+}
+
+globalThis.fetch = async (input, options = {}) => {
+  const url = new URL(typeof input === "string" ? input : input.url);
+  const isApi = url.pathname.startsWith("/api/v1/");
+  const isPublic = url.pathname === "/api/v1/auth/login" || url.pathname.startsWith("/api/v1/health");
+  const headers = new Headers(options.headers || {});
+
+  if (isApi && !isPublic && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${await getAdminToken(url.origin)}`);
+  }
+
+  return rawFetch(input, { ...options, headers });
+};
+
 test("GET /api/v1/health returns standard response", async () => {
   const server = await listen(createApp());
   try {
@@ -27,6 +71,39 @@ test("GET /api/v1/health returns standard response", async () => {
     assert.equal(body.code, 0);
     assert.equal(body.data.service, "ok");
   } finally {
+    server.close();
+  }
+});
+
+test("protected template APIs require login and permission", async () => {
+  const server = await listen(createApp());
+  const username = `norole_${Date.now().toString(36)}`;
+  try {
+    const port = server.address().port;
+
+    let response = await rawFetch(`http://127.0.0.1:${port}/api/v1/templates`);
+    let body = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(body.code, 40100);
+
+    const adminToken = await login(port);
+    response = await rawFetch(`http://127.0.0.1:${port}/api/v1/templates`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+
+    await createNoRoleUser(username);
+    const noRoleToken = await login(port, username);
+    response = await rawFetch(`http://127.0.0.1:${port}/api/v1/templates`, {
+      headers: { Authorization: `Bearer ${noRoleToken}` },
+    });
+    body = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(body.code, 40300);
+  } finally {
+    await pool.query("DELETE FROM sys_user WHERE username = ?", [username]);
     server.close();
   }
 });

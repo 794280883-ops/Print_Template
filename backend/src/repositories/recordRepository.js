@@ -1,6 +1,6 @@
 import { pool } from "../config/db.js";
 
-export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sortField, sortDir } = {}) {
+export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sortField, sortDir, allowedSortFields = [] } = {}) {
   const safePage = Math.max(1, Number(page) || 1);
   const safeSize = Math.min(200, Math.max(1, Number(pageSize) || 20));
   const offset = (safePage - 1) * safeSize;
@@ -19,7 +19,7 @@ export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sor
   );
 
   let orderClause = "ORDER BY updated_at DESC";
-  if (sortField && sortDir) {
+  if (isAllowedSortField(sortField, allowedSortFields) && sortDir) {
     const dir = sortDir.toUpperCase() === "ASC" ? "ASC" : "DESC";
     orderClause = `ORDER BY JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${sortField}"')) ${dir}`;
   }
@@ -35,6 +35,12 @@ export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sor
     page: safePage,
     pageSize: safeSize,
   };
+}
+
+function isAllowedSortField(sortField, allowedSortFields) {
+  return typeof sortField === "string" &&
+    /^[A-Za-z0-9_]+$/.test(sortField) &&
+    allowedSortFields.includes(sortField);
 }
 
 export async function getByCode(moduleCode, recordCode) {
@@ -68,6 +74,16 @@ export async function remove(moduleCode, recordCode) {
   const [result] = await pool.query(
     "DELETE FROM business_record WHERE module_code = ? AND record_code = ?",
     [moduleCode, recordCode],
+  );
+  return result.affectedRows;
+}
+
+export async function removeMany(moduleCode, recordCodes = []) {
+  if (!recordCodes.length) return 0;
+  const placeholders = recordCodes.map(() => "?").join(", ");
+  const [result] = await pool.query(
+    `DELETE FROM business_record WHERE module_code = ? AND record_code IN (${placeholders})`,
+    [moduleCode, ...recordCodes],
   );
   return result.affectedRows;
 }

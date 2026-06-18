@@ -10,13 +10,41 @@ export async function listTypes() {
 export async function searchRecords(query = {}) {
   const moduleCode = String(query.bizType || query.type || "").toUpperCase();
   const schema = await compileSchema(moduleCode);
+  const sort = resolveRecordSortOptions(query, schema);
+  const allowedSortFields = getAllowedSortFields(schema);
   return recordRepository.search(moduleCode, {
     keyword: String(query.keyword || "").trim(),
     page: query.page,
     pageSize: query.pageSize,
-    sortField: query.sortField || schema.recordCodeField.code,
-    sortDir: query.sortDir || "ASC",
+    sortField: sort.sortField,
+    sortDir: sort.sortDir,
+    allowedSortFields,
   });
+}
+
+export function resolveRecordSortOptions(query = {}, schema = {}) {
+  const defaultField = schema.recordCodeField?.code || "";
+  const allowedFields = new Set(getAllowedSortFields(schema));
+  const requestedField = String(query.sortField || defaultField).trim();
+  const requestedDir = String(query.sortDir || "ASC").toUpperCase();
+  const sortDir = requestedDir === "DESC" ? "DESC" : "ASC";
+
+  if (!isSafeSortField(requestedField) || !allowedFields.has(requestedField)) {
+    return { sortField: defaultField, sortDir: "ASC" };
+  }
+
+  return { sortField: requestedField, sortDir };
+}
+
+function isSafeSortField(field) {
+  return /^[A-Za-z0-9_]+$/.test(field);
+}
+
+function getAllowedSortFields(schema = {}) {
+  return [
+    schema.recordCodeField?.code,
+    ...(schema.sortableFields || []).map((field) => field.code),
+  ].filter(Boolean);
 }
 
 export async function createRecord(payload = {}) {
@@ -89,17 +117,37 @@ export async function deleteRecord(bizType, bizCode) {
   return { deleted: true };
 }
 
+export async function deleteRecords(bizType, payload = {}, repository = recordRepository) {
+  const moduleCode = String(bizType || "").toUpperCase();
+  const recordCodes = normalizeRecordCodes(payload.codes);
+  if (!recordCodes.length) throw appError("请选择要删除的业务数据", 40000, 400);
+  const affectedRows = await repository.removeMany(moduleCode, recordCodes);
+  if (!affectedRows) throw appError("业务数据不存在", 40400, 404);
+  return { deleted: affectedRows };
+}
+
+function normalizeRecordCodes(codes) {
+  if (!Array.isArray(codes)) return [];
+  return [...new Set(codes.map((code) => String(code || "").trim()).filter(Boolean))];
+}
+
 export async function generateImportTemplate(bizType) {
   const schema = await compileSchema(bizType);
   const headers = schema.fields.map((f) => f.name);
   const worksheet = XLSX.utils.aoa_to_sheet([headers]);
   const recordCodeColumn = schema.fields.findIndex((field) => field.code === schema.recordCodeField.code);
   const recordCodeCell = worksheet[XLSX.utils.encode_cell({ r: 0, c: recordCodeColumn })];
-  recordCodeCell.c = [{ a: "系统", t: "必填，且在当前业务类型内唯一" }];
+  recordCodeCell.c = createRecordCodeComment();
   worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, schema.module.label);
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+}
+
+export function createRecordCodeComment() {
+  const comment = [{ a: "系统", t: "必填，且在当前业务类型内唯一" }];
+  comment.hidden = true;
+  return comment;
 }
 
 export async function importRecords(bizType, fileBuffer) {

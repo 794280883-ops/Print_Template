@@ -26,3 +26,6 @@ playwright-report/
 playwright/.cache/
 .playwright-cli/
 .worktrees/
+
+# Claude Code
+.claude/

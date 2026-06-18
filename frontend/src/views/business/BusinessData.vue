@@ -34,6 +34,11 @@
         <a-button @click="handleBatchPrint" :disabled="!selectedRowKeys.length" v-permission="'business:print'">
           <printer-outlined /> 打印 {{ selectedRowKeys.length ? `(${selectedRowKeys.length})` : '' }}
         </a-button>
+        <a-popconfirm title="确认删除选中的业务数据?" @confirm="handleBatchDelete">
+          <a-button danger :disabled="!selectedRowKeys.length" v-permission="'business:delete'">
+            <delete-outlined /> 删除 {{ selectedRowKeys.length ? `(${selectedRowKeys.length})` : '' }}
+          </a-button>
+        </a-popconfirm>
       </a-space>
 
       <a-table
@@ -52,11 +57,6 @@
           <template v-if="column.key === codeFieldCode">
             <a v-if="hasPermission('business:edit')" @click.prevent="handleEdit(record)">{{ record[codeFieldCode] }}</a>
             <span v-else>{{ record[codeFieldCode] }}</span>
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <a-popconfirm title="确认删除?" @confirm="handleDelete(record)">
-              <a-button size="small" danger v-permission="'business:delete'">删除</a-button>
-            </a-popconfirm>
           </template>
         </template>
       </a-table>
@@ -147,7 +147,12 @@
                 :style="getPrintPreviewStyle(el)">
                 <div v-if="el.type === 'text'" class="el-content">{{ getTemplatePreviewText(el) }}</div>
                 <div v-else-if="el.type === 'qrcode'" class="qr"></div>
-                <div v-else-if="el.type === 'barcode'" class="barcode"></div>
+                <div v-else-if="el.type === 'barcode'" class="barcode-box">
+                  <div class="barcode" :style="getBarcodeBarStyle(el)"></div>
+                  <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el)">
+                    {{ getBarcodeHumanText(el, getPrintPreviewData()) }}
+                  </div>
+                </div>
                 <div v-else-if="el.type === 'line'" class="line-el"></div>
                 <div v-else-if="el.type === 'rect'" class="rect-el"></div>
                 <div v-else-if="el.type === 'checkbox'" class="checkbox-content">
@@ -174,14 +179,15 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons-vue';
-import { listBusinessData, deleteBusinessData, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
+import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+import { listBusinessData, deleteBusinessDataBatch, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
 import { usePermissionStore } from '../../stores/permission.js';
 
 const { hasPermission } = usePermissionStore();
 import { listTemplates, getTemplate, downloadPrintPdf, listFields } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { FIELD_DICT, TYPE_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
+import { getBarcodeBarStyle as getBarcodeBarStyleBase, getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
 
 const rows = ref([]);
 const loading = ref(false);
@@ -256,7 +262,6 @@ const dynamicColumns = computed(() => {
       sortOrder: filters.sortField === field.code ? (filters.sortDir === 'ASC' ? 'ascend' : 'descend') : null,
     });
   }
-  base.push({ title: '操作', key: 'action', width: 80, fixed: 'right' });
   return base;
 });
 
@@ -382,8 +387,12 @@ async function handleImportConfirm() {
     importing.value = false;
   }
 }
-function downloadImportTemplate() {
-  downloadImportTemplateApi(filters.type);
+async function downloadImportTemplate() {
+  try {
+    await downloadImportTemplateApi(filters.type);
+  } catch (e) {
+    message.error('下载失败: ' + (e.message || ''));
+  }
 }
 async function handleBatchPrint() {
   if (!selectedRowKeys.value.length) {
@@ -439,6 +448,26 @@ function getPrintPreviewStyle(el) {
     background: el.type === 'line' ? (el.color || '#111827') : (el.backgroundColor || 'transparent'),
     transform: `rotate(${el.rotate || 0}deg)`,
   };
+}
+
+function getPrintPreviewData() {
+  const first = printRecords.value[0];
+  return first?.fields ? first.fields : (first || {});
+}
+
+function getBarcodeHumanTextStyle(el) {
+  const tpl = selectedTemplate.value;
+  const z = tpl ? Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM)) : 1;
+  return {
+    fontSize: `${getBarcodeHumanTextFontSize(el, z)}px`,
+    marginTop: `${2 * z}px`,
+  };
+}
+
+function getBarcodeBarStyle(el) {
+  const tpl = selectedTemplate.value;
+  const z = tpl ? Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM)) : 1;
+  return getBarcodeBarStyleBase(el, z);
 }
 
 function printFileName(templateType) {
@@ -512,10 +541,17 @@ async function handleEditSave() {
   }
 }
 
-async function handleDelete(record) {
+async function handleBatchDelete() {
+  const selected = rows.value.filter(r => selectedRowKeys.value.includes(r.id));
+  const codes = selected.map(r => r.businessCode).filter(Boolean);
+  if (!codes.length) {
+    message.warning('请先选择要删除的数据');
+    return;
+  }
   try {
-    await deleteBusinessData(filters.type, record.businessCode);
-    message.success('删除成功');
+    const result = await deleteBusinessDataBatch(filters.type, codes);
+    message.success(`删除成功：${result.deleted || codes.length} 条`);
+    selectedRowKeys.value = [];
     fetchData();
   } catch (e) {
     message.error('删除失败: ' + (e.message || ''));
@@ -575,7 +611,9 @@ onMounted(async () => {
 .template-el { position: absolute; overflow: hidden; }
 .template-el .el-content { width: 100%; height: 100%; display: flex; align-items: center; }
 .template-el.el-qrcode .qr { width: 100%; height: 100%; background: repeating-linear-gradient(45deg, #333 0, #333 2px, #fff 2px, #fff 6px); }
-.template-el.el-barcode .barcode { width: 100%; height: 100%; background: repeating-linear-gradient(90deg, #333 0, #333 1px, #fff 1px, #fff 3px); }
+.template-el.el-barcode .barcode-box { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.template-el.el-barcode .barcode { flex: 1; min-height: 0; width: 100%; background: repeating-linear-gradient(90deg, #333 0, #333 1px, #fff 1px, #fff 3px); }
+.template-el.el-barcode .barcode-human-text { flex: 0 0 auto; width: 100%; line-height: 1; text-align: center; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .template-el.el-line { border-bottom: 2px solid currentColor; }
 .template-el.el-rect { border: 1px solid currentColor; }
 .template-el .checkbox-mark { display: inline-block; width: 14px; height: 14px; border: 1px solid #999; margin-right: 4px; text-align: center; line-height: 13px; font-size: 11px; }

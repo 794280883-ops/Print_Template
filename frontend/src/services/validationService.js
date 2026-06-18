@@ -24,10 +24,9 @@ export function validateTemplateDsl(templateDsl, fields = null) {
     if (["qrcode", "barcode"].includes(element.type) && !element.bindField) errors.push({ message: `${element.type === "qrcode" ? "二维码" : "条码"}没有绑定字段`, elementId: element.id });
     if (element.bindField && !fieldCodes.has(element.bindField)) errors.push({ message: `字段 ${element.bindField} 不存在于当前模板类型模版字段`, elementId: element.id });
 
-    const x2 = Number(element.x) + Number(element.width);
-    const y2 = Number(element.y) + Number(element.height);
-    const completelyOut = x2 <= 0 || y2 <= 0 || Number(element.x) >= Number(template.size?.width) || Number(element.y) >= Number(template.size?.height);
-    const partiallyOut = Number(element.x) < 0 || Number(element.y) < 0 || x2 > Number(template.size?.width) || y2 > Number(template.size?.height);
+    const bounds = getRenderedBounds(element);
+    const completelyOut = bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= Number(template.size?.width) || bounds.top >= Number(template.size?.height);
+    const partiallyOut = bounds.left < 0 || bounds.top < 0 || bounds.right > Number(template.size?.width) || bounds.bottom > Number(template.size?.height);
     if (completelyOut) errors.push({ message: "元素完全超出画布", elementId: element.id });
     else if (partiallyOut) warnings.push({ message: "元素部分超出画布", elementId: element.id });
 
@@ -41,4 +40,49 @@ export function validateTemplateDsl(templateDsl, fields = null) {
 
   if (!hasCode) tips.push({ message: "模板没有二维码或条码" });
   return { errors, warnings, tips, canPublish: errors.length === 0 };
+}
+
+function getRenderedBounds(element) {
+  const x = Number(element.x || 0);
+  const y = Number(element.y || 0);
+  const width = Number(element.width || 0);
+  const height = Number(element.height || 0);
+  const angle = normalizeRotation(element.rotate);
+
+  if (!angle) {
+    return {
+      left: x,
+      top: y,
+      right: x + width,
+      bottom: y + height,
+    };
+  }
+
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const rad = angle * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const corners = [
+    { x: -halfWidth, y: -halfHeight },
+    { x: halfWidth, y: -halfHeight },
+    { x: halfWidth, y: halfHeight },
+    { x: -halfWidth, y: halfHeight },
+  ].map((corner) => ({
+    x: centerX + corner.x * cos - corner.y * sin,
+    y: centerY + corner.x * sin + corner.y * cos,
+  }));
+
+  return {
+    left: Math.min(...corners.map((corner) => corner.x)),
+    top: Math.min(...corners.map((corner) => corner.y)),
+    right: Math.max(...corners.map((corner) => corner.x)),
+    bottom: Math.max(...corners.map((corner) => corner.y)),
+  };
+}
+
+function normalizeRotation(value) {
+  return ((Number(value || 0) % 360) + 360) % 360;
 }

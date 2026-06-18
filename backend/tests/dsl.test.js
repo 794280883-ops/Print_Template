@@ -64,3 +64,26 @@ test("validateTemplateDsl accepts custom template type when field dictionary mat
   assert.equal(result.canPublish, true);
   assert.deepEqual(result.errors, []);
 });
+
+test("validateTemplateDsl allows a 270 degree rotated element when its rendered box stays inside the canvas", () => {
+  const result = validateTemplateDsl({
+    templateName: "商品标签",
+    templateType: "PRODUCT",
+    size: { width: 30, height: 70 },
+    elements: [
+      {
+        id: "barcode_rotated",
+        type: "barcode",
+        x: -1.7,
+        y: 24.1,
+        width: 42,
+        height: 13,
+        rotate: 270,
+        bindField: "skuCode",
+      },
+    ],
+  }, [{ field_code: "skuCode" }]);
+
+  assert.equal(result.canPublish, true);
+  assert.deepEqual(result.errors, []);
+});

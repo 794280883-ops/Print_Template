@@ -93,6 +93,10 @@
           <template v-else-if="column.key === 'size'">
             {{ record.size?.width }} &times; {{ record.size?.height }}
           </template>
+          <!-- 备注 -->
+          <template v-else-if="column.key === 'remark'">
+            <span class="template-remark">{{ record.remark || '-' }}</span>
+          </template>
           <!-- 操作 -->
           <template v-else-if="column.key === 'action'">
             <a-space>
@@ -121,7 +125,12 @@
               :style="getPreviewElementStyle(el)">
               <div v-if="el.type === 'text'" class="el-content">{{ getPreviewText(el) }}</div>
               <div v-else-if="el.type === 'qrcode'" class="qr"></div>
-              <div v-else-if="el.type === 'barcode'" class="barcode"></div>
+              <div v-else-if="el.type === 'barcode'" class="barcode-box">
+                <div class="barcode" :style="getBarcodeBarStyle(el, previewTemplate)"></div>
+                <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, previewTemplate)">
+                  {{ getBarcodeHumanText(el) }}
+                </div>
+              </div>
               <div v-else-if="el.type === 'checkbox'" class="checkbox-content">
                 <span class="checkbox-mark" :class="{ checked: el.checked }">{{ el.checked ? '✓' : '' }}</span>
                 <span v-if="el.text" class="checkbox-label">{{ el.text }}</span>
@@ -186,7 +195,12 @@
                   :style="getPrintPreviewStyle(el)">
                   <div v-if="el.type === 'text'" class="el-content">{{ getPreviewText(el) }}</div>
                   <div v-else-if="el.type === 'qrcode'" class="qr"></div>
-                  <div v-else-if="el.type === 'barcode'" class="barcode"></div>
+                  <div v-else-if="el.type === 'barcode'" class="barcode-box">
+                    <div class="barcode" :style="getBarcodeBarStyle(el, printState.template)"></div>
+                    <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, printState.template)">
+                      {{ getBarcodeHumanText(el, getPrintPreviewData()) }}
+                    </div>
+                  </div>
                   <div v-else-if="el.type === 'checkbox'" class="checkbox-content">
                     <span class="checkbox-mark" :class="{ checked: el.checked }">{{ el.checked ? '✓' : '' }}</span>
                     <span v-if="el.text" class="checkbox-label">{{ el.text }}</span>
@@ -220,7 +234,7 @@
             </a-select-option>
           </a-select>
         </a-form-item>
-        <a-form-item label="尺寸(mm)">
+        <a-form-item label="尺寸(mm)" required>
           <a-space>
             <a-input-number v-model:value="createForm.width" :min="1" :max="500" placeholder="宽" style="width:120px" />
             <span>&times;</span>
@@ -253,6 +267,7 @@ import {
 import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { searchBusinessData } from '../../api/businessDataApi.js';
 import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
+import { getBarcodeBarStyle as getBarcodeBarStyleBase, getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
 
 const router = useRouter();
 
@@ -335,6 +350,7 @@ const columns = ref([
   { title: '类型', key: 'type', width: savedWidths.type || 120, resizable: true },
   { title: '状态', key: 'status', width: savedWidths.status || 100, resizable: true },
   { title: '尺寸(mm)', key: 'size', width: savedWidths.size || 130, resizable: true },
+  { title: '备注', dataIndex: 'remark', key: 'remark', width: savedWidths.remark || 180, resizable: true, ellipsis: true },
   { title: '操作', key: 'action', width: savedWidths.action || 220, fixed: 'right' },
 ]);
 
@@ -405,6 +421,26 @@ function getPreviewText(el) {
     return `[${el.bindField || '未绑定'}]`;
   }
   return el.text || '静态文本';
+}
+
+function getBarcodeHumanTextStyle(el, template) {
+  if (!template) return {};
+  const z = Math.min(1.3, 300 / (template.size.width * PX_PER_MM));
+  return {
+    fontSize: `${getBarcodeHumanTextFontSize(el, z)}px`,
+    marginTop: `${2 * z}px`,
+  };
+}
+
+function getBarcodeBarStyle(el, template) {
+  if (!template) return {};
+  const z = Math.min(1.3, 300 / (template.size.width * PX_PER_MM));
+  return getBarcodeBarStyleBase(el, z);
+}
+
+function getPrintPreviewData() {
+  const row = printState.value?.businessList?.[0];
+  return row?.fields || row || {};
 }
 
 // -- Methods --
@@ -682,6 +718,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
 }
+.template-remark { color: #4b5563; }
 .filter-card {
   background: linear-gradient(180deg, #fbfdff 0%, #f6f9fd 100%);
 }
@@ -720,12 +757,15 @@ onMounted(() => {
   background: repeating-conic-gradient(#999 0% 25%, #fff 0% 50%) 50% / 8px 8px;
   border: 1px dashed #ddd;
 }
+.barcode-box { width: 100%; height: 100%; display: flex; flex-direction: column; }
 .barcode {
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100%;
   background: repeating-linear-gradient(90deg, #333 0px 2px, #fff 2px 4px);
   border: 1px dashed #ddd;
 }
+.barcode-human-text { flex: 0 0 auto; width: 100%; line-height: 1; text-align: center; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .checkbox-content {
   display: flex;
   align-items: center;

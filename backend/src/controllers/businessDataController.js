@@ -21,6 +21,10 @@ export async function remove(req, res) {
   sendSuccess(res, await recordService.deleteRecord(req.params.bizType, req.params.bizCode));
 }
 
+export async function batchRemove(req, res) {
+  sendSuccess(res, await recordService.deleteRecords(req.params.bizType, req.body));
+}
+
 export async function downloadTemplate(req, res) {
   const buffer = await recordService.generateImportTemplate(req.params.bizType);
   const filename = encodeURIComponent(`${req.params.bizType}_导入模板.xlsx`);

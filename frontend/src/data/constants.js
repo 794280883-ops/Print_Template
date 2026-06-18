@@ -49,7 +49,7 @@ export const COMPONENTS = [
   { type: "text", label: "静态文本", icon: "T", preset: { textKind: "static", text: "STATIC TEXT", width: 28, height: 8, fontSize: 12 } },
   { type: "text", label: "动态字段", icon: "{}", preset: { textKind: "field", bindField: "locationCode", width: 38, height: 9, fontSize: 14, bold: true } },
   { type: "qrcode", label: "二维码", icon: "QR", preset: { bindField: "locationCode", width: 18, height: 18, errorLevel: "M" } },
-  { type: "barcode", label: "一维码", icon: "|||", preset: { bindField: "locationCode", width: 42, height: 13, errorLevel: "M" } },
+  { type: "barcode", label: "一维码", icon: "|||", preset: { bindField: "locationCode", width: 42, height: 13, errorLevel: "M", showHumanText: true, humanTextFontSize: 8 } },
   { type: "line", label: "横线", icon: "—", preset: { width: 50, height: 1, direction: "horizontal" } },
   { type: "rect", label: "矩形", icon: "□", preset: { width: 30, height: 14, color: "#000000", backgroundColor: "#000000" } },
   { type: "checkbox", label: "复选框", icon: "☑", preset: { width: 24, height: 7, checked: false, text: "" } },

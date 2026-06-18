@@ -3,10 +3,21 @@ import dotenv from "dotenv";
 dotenv.config({ quiet: true });
 if (process.env.ENV_FILE) dotenv.config({ path: process.env.ENV_FILE, override: true, quiet: true });
 
+const nodeEnv = process.env.NODE_ENV || "development";
+const jwtSecret = process.env.JWT_SECRET || (nodeEnv === "production" ? "" : "wms-print-template-jwt-secret");
+
+if (nodeEnv === "production" && !jwtSecret) {
+  throw new Error("JWT_SECRET must be configured in production");
+}
+
 export const env = {
-  nodeEnv: process.env.NODE_ENV || "development",
+  nodeEnv,
   port: Number(process.env.PORT || 3001),
   corsOrigin: process.env.CORS_ORIGIN || "http://127.0.0.1:5173",
+  jwtSecret,
+  pdf: {
+    cjkFontPath: process.env.PDF_CJK_FONT_PATH || "/Library/Fonts/Arial Unicode.ttf",
+  },
   db: {
     host: process.env.DB_HOST || "127.0.0.1",
     port: Number(process.env.DB_PORT || 3306),

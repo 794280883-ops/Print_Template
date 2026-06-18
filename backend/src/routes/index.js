@@ -9,11 +9,13 @@ import { printRouter } from "./print.routes.js";
 import { roleRouter } from "./role.routes.js";
 import { templateRouter } from "./template.routes.js";
 import { userRouter } from "./user.routes.js";
+import { requireAuth } from "../middlewares/auth.js";
 
 export const apiRouter = Router();
 
 apiRouter.use(authRouter);
 apiRouter.use(healthRouter);
+apiRouter.use(requireAuth);
 apiRouter.use(templateRouter);
 apiRouter.use(businessModuleRouter);
 apiRouter.use(fieldRouter);

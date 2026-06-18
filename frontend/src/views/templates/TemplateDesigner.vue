@@ -92,7 +92,12 @@
               <div v-if="el.type === 'text'" class="el-content">{{ getTextDisplay(el) }}</div>
               <!-- qrcode/barcode -->
               <div v-else-if="el.type === 'qrcode'" class="qr" :title="el.bindField"></div>
-              <div v-else-if="el.type === 'barcode'" class="barcode" :title="el.bindField"></div>
+              <div v-else-if="el.type === 'barcode'" class="barcode-box" :title="el.bindField">
+                <div class="barcode"></div>
+                <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, zoom)">
+                  {{ getBarcodeHumanText(el) }}
+                </div>
+              </div>
               <!-- checkbox -->
               <div v-else-if="el.type === 'checkbox'" class="checkbox-content">
                 <span class="checkbox-mark" :class="{ checked: el.checked }">{{ el.checked ? '✓' : '' }}</span>
@@ -164,6 +169,12 @@
               <!-- QR/Barcode props -->
               <template v-if="selectedElement.type === 'qrcode' || selectedElement.type === 'barcode'">
                 <a-form-item label="绑定字段"><a-select v-model:value="selectedElement.bindField" data-prop="bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item>
+                <template v-if="selectedElement.type === 'barcode'">
+                  <a-row :gutter="8">
+                    <a-col :span="12"><a-form-item><a-checkbox v-model:checked="selectedElement.showHumanText" data-prop="showHumanText" @change="onPropChange">显示文字</a-checkbox></a-form-item></a-col>
+                    <a-col :span="12"><a-form-item label="文字字号 px"><a-input-number v-model:value="selectedElement.humanTextFontSize" :min="6" :step="1" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
+                  </a-row>
+                </template>
               </template>
               <!-- Checkbox props -->
               <template v-if="selectedElement.type === 'checkbox'">
@@ -219,7 +230,12 @@
               :style="getPreviewElementStyle(el)">
               <div v-if="el.type === 'text'" class="el-content">{{ getTextDisplay(el) }}</div>
               <div v-else-if="el.type === 'qrcode'" class="qr" :title="el.bindField"></div>
-              <div v-else-if="el.type === 'barcode'" class="barcode" :title="el.bindField"></div>
+              <div v-else-if="el.type === 'barcode'" class="barcode-box" :title="el.bindField">
+                <div class="barcode"></div>
+                <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, previewZoom)">
+                  {{ getBarcodeHumanText(el) }}
+                </div>
+              </div>
               <div v-else-if="el.type === 'checkbox'" class="checkbox-content">
                 <span class="checkbox-mark" :class="{ checked: el.checked }">{{ el.checked ? '✓' : '' }}</span>
                 <span v-if="el.text" class="checkbox-label">{{ el.text }}</span>
@@ -242,7 +258,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -252,7 +268,8 @@ import {
 import { getTemplate, updateTemplate, listFields } from '../../api/templateApi.js';
 import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
 import { validateTemplateDsl } from '../../services/validationService.js';
-import { getPrintableTemplate } from '../../services/printRotationService.js';
+import { resizeElementFromHandle } from '../../services/resizeService.js';
+import { getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
 import { loadTemplateForDesigner, normalizeTemplateType, resolveTemplateFields } from './templateDesignerLoader.js';
 
 const route = useRoute();
@@ -298,7 +315,6 @@ function uid(p) { return `${p}_${Date.now().toString(36)}_${Math.random().toStri
 function deepClone(x) { return JSON.parse(JSON.stringify(x)); }
 function clamp(v, min, max) { return Math.max(min, Math.min(max, Number(v))); }
 function round1(v) { return Math.round(Number(v) * 10) / 10; }
-function normalizeColor(c) { return /^#[0-9a-f]{6}$/i.test(c) ? c : '#111827'; }
 function alignToFlex(a) { return a === 'center' ? 'center' : a === 'right' ? 'flex-end' : 'flex-start'; }
 
 // ── Computed ──
@@ -386,8 +402,14 @@ const previewCanvasStyle = computed(() => {
   if (!template.value) return {};
   const tpl = template.value;
   const availWidth = 480;
-  const z = Math.min(2, availWidth / (tpl.size.width * PX_PER_MM));
+  const z = previewZoom.value;
   return { width: `${tpl.size.width * PX_PER_MM * z}px`, height: `${tpl.size.height * PX_PER_MM * z}px` };
+});
+
+const previewZoom = computed(() => {
+  if (!template.value) return 1;
+  const availWidth = 480;
+  return Math.min(2, availWidth / (template.value.size.width * PX_PER_MM));
 });
 
 function getElementStyle(el) {
@@ -409,8 +431,7 @@ function getElementStyle(el) {
 
 function getPreviewElementStyle(el) {
   const tpl = template.value;
-  const availWidth = 480;
-  const z = Math.min(2, availWidth / (tpl.size.width * PX_PER_MM));
+  const z = previewZoom.value;
   const justify = ['qrcode', 'barcode', 'image'].includes(el.type) ? 'center' : alignToFlex(el.align || 'left');
   return {
     left: `${el.x * PX_PER_MM * z}px`,
@@ -424,6 +445,13 @@ function getPreviewElementStyle(el) {
     color: el.color || '#111827',
     background: el.type === 'line' ? (el.color || '#111827') : (el.backgroundColor || 'transparent'),
     transform: `rotate(${el.rotate || 0}deg)`,
+  };
+}
+
+function getBarcodeHumanTextStyle(el, scale) {
+  return {
+    fontSize: `${getBarcodeHumanTextFontSize(el, scale)}px`,
+    marginTop: `${2 * Number(scale || 1)}px`,
   };
 }
 
@@ -464,26 +492,6 @@ function redo() {
   selectedElementId.value = template.value.elements[0]?.id || null;
 }
 
-// ── Validation ──
-function runValidation() {
-  if (!template.value) {
-    message.warning('模板未加载，请先选择模板');
-    return;
-  }
-  validation.value = validateTemplateDsl(template.value, currentFields.value);
-  const { errors, warnings, tips } = validation.value;
-  if (errors.length) {
-    message.error(`校验未通过：${errors.length} 个错误，${warnings.length} 个警告`);
-  } else if (warnings.length) {
-    message.warning(`校验通过：${warnings.length} 个警告，${tips.length} 个提示`);
-  } else {
-    message.success('校验通过，模板符合发布标准');
-  }
-  setTimeout(() => {
-    document.querySelector('.validation-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 100);
-}
-
 // ── Element Operations ──
 function selectElement(id) {
   if (id !== selectedElementId.value) pushHistory();
@@ -506,6 +514,7 @@ function addElementFromData(data) {
     backgroundColor: 'transparent', zIndex: template.value.elements.length + 1,
   };
   const el = { ...base, ...deepClone(data.preset || {}) };
+  normalizeBarcodeElementOptions(el);
   if ((el.type === 'qrcode' || el.type === 'barcode' || el.textKind === 'field') &&
       (!el.bindField || !currentFields.value.some(f => f.code === el.bindField))) {
     el.bindField = currentFields.value[0]?.code || '';
@@ -593,12 +602,9 @@ function onPointerMove(event) {
     el.x = round1(clamp(o.x + dx, -o.width + 1, tw - 1));
     el.y = round1(clamp(o.y + dy, -o.height + 1, th - 1));
   } else {
-    let x = o.x, y = o.y, w = o.width, h = o.height;
-    if (dragState.handle.includes('e')) w = o.width + dx;
-    if (dragState.handle.includes('s')) h = o.height + dy;
-    if (dragState.handle.includes('w')) { x = o.x + dx; w = o.width - dx; }
-    if (dragState.handle.includes('n')) { y = o.y + dy; h = o.height - dy; }
-    w = Math.max(1, w); h = Math.max(1, h);
+    let { x, y, width: w, height: h } = resizeElementFromHandle(o, dragState.handle, { dx, dy });
+    w = Math.max(1, w);
+    h = Math.max(1, h);
     el.x = round1(clamp(x, -w + 1, tw - 1));
     el.y = round1(clamp(y, -h + 1, th - 1));
     el.width = round1(w);
@@ -638,6 +644,7 @@ function handleDrop(event) {
     backgroundColor: 'transparent', zIndex: template.value.elements.length + 1,
   };
   const el = { ...base, ...deepClone(data.preset || {}) };
+  normalizeBarcodeElementOptions(el);
   if ((el.type === 'qrcode' || el.type === 'barcode' || el.textKind === 'field') &&
       (!el.bindField || !currentFields.value.some(f => f.code === el.bindField))) {
     el.bindField = currentFields.value[0]?.code || '';
@@ -648,19 +655,6 @@ function handleDrop(event) {
   }
   template.value.elements.push(el);
   selectedElementId.value = el.id;
-}
-
-// ── Zoom ──
-function zoomIn() {
-  const steps = [0.75, 1, 1.25, 1.5];
-  const idx = steps.indexOf(zoom.value);
-  if (idx < steps.length - 1) zoom.value = steps[idx + 1];
-}
-
-function zoomOut() {
-  const steps = [0.75, 1, 1.25, 1.5];
-  const idx = steps.indexOf(zoom.value);
-  if (idx > 0) zoom.value = steps[idx - 1];
 }
 
 // ── Save / Preview ──
@@ -751,6 +745,7 @@ async function loadDesignerTemplate(id) {
   try {
     const tpl = await loadTemplateForDesigner(id, { getTemplate, fetchFields });
     if (version !== loadVersion) return;
+    (tpl.elements || []).forEach(normalizeBarcodeElementOptions);
     template.value = tpl;
     templateWidth.value = tpl.size.width;
     templateHeight.value = tpl.size.height;
@@ -765,6 +760,12 @@ async function loadDesignerTemplate(id) {
   } finally {
     if (version === loadVersion) loading.value = false;
   }
+}
+
+function normalizeBarcodeElementOptions(el) {
+  if (el?.type !== 'barcode') return;
+  if (el.showHumanText === undefined) el.showHumanText = true;
+  if (!el.humanTextFontSize) el.humanTextFontSize = 8;
 }
 
 watch(() => route.params.id, (id) => {
@@ -873,7 +874,9 @@ onUnmounted(() => {
 .el-content { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
 .el-qrcode, .el-barcode { background: #f9f9f9; }
 .qr { width: 100%; height: 100%; background: repeating-conic-gradient(#999 0% 25%, #fff 0% 50%) 50% / 8px 8px; border: 1px dashed #ddd; }
-.barcode { width: 100%; height: 100%; background: repeating-linear-gradient(90deg, #333 0px 2px, #fff 2px 4px); border: 1px dashed #ddd; }
+.barcode-box { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.barcode { flex: 1; min-height: 0; width: 100%; background: repeating-linear-gradient(90deg, #333 0px 2px, #fff 2px 4px); border: 1px dashed #ddd; }
+.barcode-human-text { flex: 0 0 auto; width: 100%; line-height: 1; text-align: center; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .checkbox-content { display: flex; align-items: center; gap: 4px; }
 .checkbox-mark { width: 16px; height: 16px; border: 2px solid #999; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
 .checkbox-mark.checked { background: var(--wms-blue); border-color: var(--wms-blue); color: #fff; }

@@ -5,6 +5,7 @@ import {
   MM_TO_PT,
   cssPxToPdfPt,
   elementBoxToPdfPoints,
+  getBarcodeLayout,
   getTextLayout,
 } from "../src/services/pdfLayout.js";
 
@@ -36,4 +37,27 @@ test("text layout matches preview single-line clipped element semantics", () => 
   assert.equal(layout.options.align, "center");
   assert.equal(layout.options.lineBreak, false);
   assert.equal(layout.options.ellipsis, true);
+});
+
+test("barcode layout reserves bottom space for visible human readable text by default", () => {
+  const box = elementBoxToPdfPoints({ x: 0, y: 0, width: 42, height: 13 });
+  const layout = getBarcodeLayout({ type: "barcode", bindField: "skuCode" }, box);
+
+  assert.equal(layout.showHumanText, true);
+  assert.equal(layout.humanTextFontSize, 6);
+  assert.equal(layout.barcodeBox.x, box.x);
+  assert.equal(layout.barcodeBox.y, box.y);
+  assert.equal(layout.barcodeBox.w, box.w);
+  assert.ok(layout.barcodeBox.h < box.h);
+  assert.equal(layout.textBox.y, layout.barcodeBox.y + layout.barcodeBox.h + layout.humanTextGap);
+  assert.equal(layout.humanTextGap, 1.5);
+});
+
+test("barcode layout can hide human readable text", () => {
+  const box = elementBoxToPdfPoints({ x: 0, y: 0, width: 42, height: 13 });
+  const layout = getBarcodeLayout({ type: "barcode", showHumanText: false }, box);
+
+  assert.equal(layout.showHumanText, false);
+  assert.deepEqual(layout.barcodeBox, box);
+  assert.equal(layout.textBox, null);
 });

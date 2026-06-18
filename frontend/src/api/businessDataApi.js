@@ -1,4 +1,6 @@
-import { request, toQuery } from "./request.js";
+import { API_BASE_URL, authorizedApiFetch, request, toQuery } from "./request.js";
+import { usePermissionStore } from "../stores/permission.js";
+import { downloadAuthenticatedBlob } from "../services/downloadService.js";
 
 export function listBusinessData(type, params = {}) {
   return searchBusinessData({ bizType: type, ...params });
@@ -28,19 +30,26 @@ export function deleteBusinessData(bizType, bizCode) {
   });
 }
 
-export function downloadImportTemplate(bizType) {
-  const a = document.createElement("a");
-  a.href = `/api/v1/business-data/template/${encodeURIComponent(bizType)}`;
-  a.download = `${bizType}_导入模板.xlsx`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+export function deleteBusinessDataBatch(bizType, codes) {
+  return request(`/business-data/batch/${encodeURIComponent(bizType)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ codes }),
+  });
+}
+
+export async function downloadImportTemplate(bizType) {
+  const store = usePermissionStore();
+  await downloadAuthenticatedBlob(
+    `/business-data/template/${encodeURIComponent(bizType)}`,
+    `${bizType}_导入模板.xlsx`,
+    { apiBaseUrl: API_BASE_URL, token: store.getToken() },
+  );
 }
 
 export async function importBusinessData(bizType, file) {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`/api/v1/business-data/import/${encodeURIComponent(bizType)}`, {
+  const response = await authorizedApiFetch(`/business-data/import/${encodeURIComponent(bizType)}`, {
     method: "POST",
     body: formData,
   });

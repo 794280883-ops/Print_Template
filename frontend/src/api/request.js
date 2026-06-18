@@ -1,19 +1,24 @@
 import { usePermissionStore } from "../stores/permission.js";
+import { authorizedFetch } from "../services/authFetchService.js";
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || "/api/v1";
+
+export function authorizedApiFetch(path, options = {}) {
+  const store = usePermissionStore();
+  return authorizedFetch(path, options, {
+    apiBaseUrl: API_BASE_URL,
+    token: store.getToken(),
+  });
+}
 
 export async function request(path, options = {}) {
-  const store = usePermissionStore();
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
   };
-  if (store.getToken()) {
-    headers["Authorization"] = `Bearer ${store.getToken()}`;
-  }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers,
+  const response = await authorizedApiFetch(path, {
     ...options,
+    headers,
   });
   const payload = await response.json().catch(() => ({ code: response.ok ? 0 : 50000, message: response.statusText, data: null }));
   if (!response.ok || payload.code !== 0) {

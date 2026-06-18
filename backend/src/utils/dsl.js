@@ -67,7 +67,9 @@ export function normalizeTemplateInput(input) {
 
 export function validateTemplateDsl(template, fieldRows = []) {
   const errors = [];
-  const fieldCodes = new Set(fieldRows.map((field) => field.field_code));
+  const warnings = [];
+  const tips = [];
+  const fieldCodes = new Set(fieldRows.map((field) => field.field_code || field.code));
 
   if (!String(template.templateName || "").trim()) errors.push({ message: "模板名称为空" });
   if (!String(template.templateType || "").trim()) errors.push({ message: "模板类型为空" });
@@ -76,21 +78,31 @@ export function validateTemplateDsl(template, fieldRows = []) {
   if (!Array.isArray(template.elements) || !template.elements.length) errors.push({ message: "画布内没有元素" });
 
   const ids = new Set();
+  let hasCode = false;
   for (const element of template.elements || []) {
     if (ids.has(element.id)) errors.push({ message: `元素 id 重复：${element.id}`, elementId: element.id });
     ids.add(element.id);
     if (!SUPPORTED_TYPES.includes(element.type)) errors.push({ message: `组件类型不支持：${element.type}`, elementId: element.id });
-    if (element.textKind === "field" && !element.bindField) errors.push({ message: "动态文本没有绑定字段", elementId: element.id });
+    if (element.type === "text" && element.textKind === "field" && !element.bindField) errors.push({ message: "动态文本没有绑定字段", elementId: element.id });
     if (["qrcode", "barcode"].includes(element.type) && !element.bindField) errors.push({ message: `${element.type === "qrcode" ? "二维码" : "条码"}没有绑定字段`, elementId: element.id });
     if (element.bindField && !fieldCodes.has(element.bindField)) errors.push({ message: `字段 ${element.bindField} 不存在于当前模板类型模版字段`, elementId: element.id });
 
-    const x2 = Number(element.x) + Number(element.width);
-    const y2 = Number(element.y) + Number(element.height);
-    const out = x2 <= 0 || y2 <= 0 || Number(element.x) >= Number(template.size?.width) || Number(element.y) >= Number(template.size?.height);
-    if (out) errors.push({ message: "元素完全超出画布", elementId: element.id });
+    const bounds = getRenderedBounds(element);
+    const completelyOut = bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= Number(template.size?.width) || bounds.top >= Number(template.size?.height);
+    const partiallyOut = bounds.left < 0 || bounds.top < 0 || bounds.right > Number(template.size?.width) || bounds.bottom > Number(template.size?.height);
+    if (completelyOut) errors.push({ message: "元素完全超出画布", elementId: element.id });
+    else if (partiallyOut) warnings.push({ message: "元素部分超出画布", elementId: element.id });
+
+    if (["qrcode", "barcode"].includes(element.type)) {
+      hasCode = true;
+      if (Number(element.width) < 12 || Number(element.height) < 12) warnings.push({ message: `${element.type === "qrcode" ? "二维码" : "条码"}宽高小于 12mm`, elementId: element.id });
+    }
+    if (element.type === "image" && !element.imageUrl) warnings.push({ message: "图片组件没有图片地址", elementId: element.id });
+    if (element.type === "text" && Number(element.fontSize || 0) < 6) tips.push({ message: "字体小于 6px", elementId: element.id });
   }
 
-  return { errors, canPublish: errors.length === 0 };
+  if (!hasCode) tips.push({ message: "模板没有二维码或条码" });
+  return { errors, warnings, tips, canPublish: errors.length === 0 };
 }
 
 export function elementToRow(templateId, element) {
@@ -139,4 +151,49 @@ function normalizePrintRotation(value) {
 function normalizeTemplateStatus(value) {
   if (value === "enabled" || value === "published") return "enabled";
   return "disabled";
+}
+
+function getRenderedBounds(element) {
+  const x = Number(element.x || 0);
+  const y = Number(element.y || 0);
+  const width = Number(element.width || 0);
+  const height = Number(element.height || 0);
+  const angle = normalizeRotation(element.rotate);
+
+  if (!angle) {
+    return {
+      left: x,
+      top: y,
+      right: x + width,
+      bottom: y + height,
+    };
+  }
+
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const rad = angle * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const corners = [
+    { x: -halfWidth, y: -halfHeight },
+    { x: halfWidth, y: -halfHeight },
+    { x: halfWidth, y: halfHeight },
+    { x: -halfWidth, y: halfHeight },
+  ].map((corner) => ({
+    x: centerX + corner.x * cos - corner.y * sin,
+    y: centerY + corner.x * sin + corner.y * cos,
+  }));
+
+  return {
+    left: Math.min(...corners.map((corner) => corner.x)),
+    top: Math.min(...corners.map((corner) => corner.y)),
+    right: Math.max(...corners.map((corner) => corner.x)),
+    bottom: Math.max(...corners.map((corner) => corner.y)),
+  };
+}
+
+function normalizeRotation(value) {
+  return ((Number(value || 0) % 360) + 360) % 360;
 }

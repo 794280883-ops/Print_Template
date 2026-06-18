@@ -2,10 +2,8 @@ import PDFDocument from "pdfkit";
 import bwipjs from "bwip-js";
 import QRCode from "qrcode";
 import { Buffer } from "node:buffer";
-import { cssPxToPdfPt, elementBoxToPdfPoints, getTextLayout, MM_TO_PT } from "./pdfLayout.js";
-
-// macOS full CJK font (TTF format required for pdfkit; subset fonts like Hei/Kai have broken cmap)
-const CJK_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf";
+import { env } from "../config/env.js";
+import { cssPxToPdfPt, elementBoxToPdfPoints, getBarcodeLayout, getTextLayout, MM_TO_PT } from "./pdfLayout.js";
 
 /**
  * Generate a PDF buffer from a template and data rows.
@@ -45,7 +43,7 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
   const ensureCjkFont = () => {
     if (!cjkFontRegistered) {
       try {
-        doc.registerFont("CJK", CJK_FONT_PATH);
+        doc.registerFont("CJK", env.pdf.cjkFontPath);
         cjkFontRegistered = true;
       } catch (err) {
         console.error("CJK font registration failed:", err.message);
@@ -172,9 +170,11 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
   if (!value) return;
 
   try {
+    const layout = getBarcodeLayout(el, { x, y, w, h });
+    const barcodeBox = layout.barcodeBox;
     // bwip-js height in mm, scale controls resolution (higher = sharper)
-    const heightMm = h / MM_TO_PT;
-    const widthMm = w / MM_TO_PT;
+    const heightMm = barcodeBox.h / MM_TO_PT;
+    const widthMm = barcodeBox.w / MM_TO_PT;
     const pngBuffer = await bwipjs.toBuffer({
       bcid: "code128",
       text: value,
@@ -187,7 +187,19 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
     });
 
     // Render barcode at exact element dimensions to match preview layout
-    doc.image(pngBuffer, x, y, { width: w, height: h });
+    doc.image(pngBuffer, barcodeBox.x, barcodeBox.y, { width: barcodeBox.w, height: barcodeBox.h });
+    if (layout.showHumanText && layout.textBox) {
+      doc.font("Helvetica")
+        .fontSize(layout.humanTextFontSize)
+        .fillColor(el.color || "#111827")
+        .text(value, layout.textBox.x, layout.textBox.y, {
+          width: layout.textBox.w,
+          height: layout.textBox.h,
+          align: "center",
+          lineBreak: false,
+          ellipsis: true,
+        });
+    }
   } catch (err) {
     // Fallback: draw a placeholder with the value
     doc.font("Helvetica").fontSize(8).fillColor("#666")
