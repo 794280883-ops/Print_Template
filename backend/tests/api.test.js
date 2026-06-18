@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after } from "node:test";
 import test from "node:test";
+import XLSX from "xlsx";
 import { createApp } from "../src/app.js";
 import { pool } from "../src/config/db.js";
 import { testDbPool } from "../src/config/testDb.js";
@@ -173,6 +174,63 @@ test("DELETE /api/v1/business-modules/:code disables custom module from module a
   }
 });
 
+test("POST /api/v1/business-modules restores a disabled module and its primary field", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const suffix = Date.now().toString(36).toUpperCase();
+    const moduleCode = `RST_${suffix}`;
+    const requestBody = {
+      code: moduleCode,
+      name: "恢复前模块",
+      templateLabel: "恢复前模板",
+      dataLabel: "恢复前数据",
+      recordCodeField: "restoreCode",
+      fields: [{ code: "restoreCode", name: "恢复前编码", type: "string", required: true, sortNo: 10 }],
+    };
+
+    let response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    assert.equal(response.status, 200);
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules/${moduleCode}`, { method: "DELETE" });
+    assert.equal(response.status, 200);
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...requestBody,
+        name: "恢复后模块",
+        templateLabel: "恢复后模板",
+        dataLabel: "恢复后数据",
+        fields: [{ ...requestBody.fields[0], name: "恢复后编码" }],
+      }),
+    });
+    const restoredBody = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(restoredBody.data.name, "恢复后模块");
+    assert.equal(restoredBody.data.enabled, true);
+
+    const fieldsResponse = await fetch(`http://127.0.0.1:${port}/api/v1/template/fields/${moduleCode}`);
+    const fieldsBody = await fieldsResponse.json();
+    assert.deepEqual(fieldsBody.data.map((item) => ({ code: item.code, name: item.name, enabled: item.enabled })), [
+      { code: "restoreCode", name: "恢复后编码", enabled: true },
+    ]);
+
+    const modulesBody = await (await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`)).json();
+    assert.equal(modulesBody.data.some((item) => item.code === moduleCode && item.templateLabel === "恢复后模板"), true);
+
+    const typesBody = await (await fetch(`http://127.0.0.1:${port}/api/v1/business-data/types`)).json();
+    assert.equal(typesBody.data.some((item) => item.code === moduleCode && item.label === "恢复后数据"), true);
+  } finally {
+    server.close();
+  }
+});
+
 test("DELETE /api/v1/business-modules/:code rejects built-in module", async () => {
   const server = await listen(createApp());
   try {
@@ -334,6 +392,117 @@ test("custom module business data uses business_data JSON storage", async () => 
     assert.equal(response.status, 200);
     assert.equal(body.data.deleted, true);
   } finally {
+    server.close();
+  }
+});
+
+test("business data import template marks the primary field as required", async () => {
+  const server = await listen(createApp());
+  try {
+    const port = server.address().port;
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/template/LOCATION`);
+    const workbook = XLSX.read(Buffer.from(await response.arrayBuffer()), { type: "buffer" });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    assert.equal(response.status, 200);
+    assert.match(worksheet.A1.c?.[0]?.t || "", /必填/);
+    assert.match(worksheet.A1.c?.[0]?.t || "", /当前业务类型内唯一/);
+  } finally {
+    server.close();
+  }
+});
+
+test("business data primary field is unique and cannot be changed", async () => {
+  const server = await listen(createApp());
+  const recordCode = `UNIQUE_${Date.now().toString(36).toUpperCase()}`;
+  try {
+    const port = server.address().port;
+    let response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bizType: "LOCATION", fields: { locationCode: recordCode } }),
+    });
+    assert.equal(response.status, 200);
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bizType: "LOCATION", fields: { locationCode: recordCode } }),
+    });
+    const duplicateBody = await response.json();
+    assert.equal(response.status, 409);
+    assert.match(duplicateBody.message, /已存在/);
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/LOCATION/${recordCode}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { locationCode: `${recordCode}_CHANGED` } }),
+    });
+    const updateBody = await response.json();
+    assert.equal(response.status, 400);
+    assert.match(updateBody.message, /不允许修改/);
+  } finally {
+    await pool.query("DELETE FROM business_record WHERE module_code = ? AND record_code IN (?, ?)", [
+      "LOCATION",
+      recordCode,
+      `${recordCode}_CHANGED`,
+    ]);
+    server.close();
+  }
+});
+
+test("business data import rejects existing and file-duplicate primary values", async () => {
+  const server = await listen(createApp());
+  const suffix = Date.now().toString(36).toUpperCase();
+  const existingCode = `IMP_EXIST_${suffix}`;
+  const duplicateCode = `IMP_DUP_${suffix}`;
+  const validCode = `IMP_OK_${suffix}`;
+  try {
+    const port = server.address().port;
+    let response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bizType: "LOCATION", fields: { locationCode: existingCode } }),
+    });
+    assert.equal(response.status, 200);
+
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["库位编码"],
+      [existingCode],
+      [duplicateCode],
+      [duplicateCode],
+      [validCode],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "库位数据");
+    const fileBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    const form = new FormData();
+    form.append("file", new Blob([fileBuffer]), "location-import.xlsx");
+
+    response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/import/LOCATION`, {
+      method: "POST",
+      body: form,
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.data.total, 4);
+    assert.equal(body.data.success, 1);
+    assert.equal(body.data.errors.length, 3);
+    assert.equal(body.data.errors.filter((item) => item.message.includes("导入文件中重复")).length, 2);
+    assert.equal(body.data.errors.some((item) => item.message.includes("已存在")), true);
+
+    const [rows] = await pool.query(
+      "SELECT record_code FROM business_record WHERE module_code = ? AND record_code IN (?, ?)",
+      ["LOCATION", duplicateCode, validCode],
+    );
+    assert.deepEqual(rows.map((item) => item.record_code), [validCode]);
+  } finally {
+    await pool.query("DELETE FROM business_record WHERE module_code = ? AND record_code IN (?, ?, ?)", [
+      "LOCATION",
+      existingCode,
+      duplicateCode,
+      validCode,
+    ]);
     server.close();
   }
 });

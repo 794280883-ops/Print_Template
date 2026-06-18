@@ -67,10 +67,10 @@
       <a-form layout="vertical" v-if="editRecord">
         <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
-            <a-input-number v-if="f.type === 'integer'" v-model:value="editFields[f.code]" :precision="0" style="width:100%" />
-            <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" style="width:100%" />
-            <a-date-picker v-else-if="f.type === 'date'" v-model:value="editFields[f.code]" style="width:100%" />
-            <a-input v-else v-model:value="editFields[f.code]" />
+            <a-input-number v-if="f.type === 'integer'" v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" :precision="0" style="width:100%" />
+            <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" style="width:100%" />
+            <a-date-picker v-else-if="f.type === 'date'" v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" style="width:100%" />
+            <a-input v-else v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" />
           </a-form-item>
         </template>
       </a-form>

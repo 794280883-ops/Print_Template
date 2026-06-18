@@ -1,5 +1,6 @@
 import * as businessModuleRepository from "../repositories/businessModuleRepository.js";
 import * as fieldRepository from "../repositories/fieldRepository.js";
+import { withTransaction } from "../config/db.js";
 import { normalizeField } from "./fieldService.js";
 import { appError } from "../utils/response.js";
 
@@ -15,7 +16,7 @@ export async function createModule(payload = {}) {
   const name = String(payload.name || "").trim();
   const templateLabel = String(payload.templateLabel || `${name}模板`).trim();
   const dataLabel = String(payload.dataLabel || `${name}数据`).trim();
-  const recordCodeField = String(payload.recordCodeField || "").trim();
+  const recordCodeField = String(payload.recordCodeField || payload.codeField || "").trim();
   const fields = Array.isArray(payload.fields) ? payload.fields.map((field) => normalizeField(field, { requireCode: true })) : [];
 
   if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(code)) throw appError("模块编码需以大写字母开头，仅支持大写字母、数字、下划线，长度 2-32", 40000, 400);
@@ -24,7 +25,7 @@ export async function createModule(payload = {}) {
   if (!fields.some((field) => field.code === recordCodeField)) throw appError("主键字段必须存在于字段列表中", 40000, 400);
 
   try {
-    const created = await businessModuleRepository.createModule({
+    const module = {
       code,
       name,
       templateLabel,
@@ -32,11 +33,20 @@ export async function createModule(payload = {}) {
       recordCodeField,
       storageMode: "json_table",
       sortNo: Number(payload.sortNo ?? 100) || 100,
+    };
+
+    return await withTransaction(async (connection) => {
+      const existing = await businessModuleRepository.getModule(code, connection);
+      if (existing?.enabled) throw appError(`模块编码「${code}」已存在`, 40001, 409);
+
+      const saved = existing
+        ? await businessModuleRepository.restoreModule(module, connection)
+        : await businessModuleRepository.createModule(module, connection);
+      for (const field of fields) {
+        await fieldRepository.upsertField(code, field, connection);
+      }
+      return toDto(saved);
     });
-    for (const field of fields) {
-      await fieldRepository.createField(code, field);
-    }
-    return toDto(created);
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY") throw appError("模块编码或字段编码已存在", 40001, 409);
     throw error;

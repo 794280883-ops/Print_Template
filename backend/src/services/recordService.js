@@ -26,6 +26,9 @@ export async function createRecord(payload = {}) {
 
   const recordCode = String(fields[schema.recordCodeField.code] || "").trim();
   if (!recordCode) throw appError(`${schema.recordCodeField.name}必填`, 40000, 400);
+  if (await recordRepository.getByCode(moduleCode, recordCode)) {
+    throw appError(`${schema.recordCodeField.name}「${recordCode}」已存在`, 40001, 409);
+  }
 
   const recordData = {};
   for (const f of schema.fields) {
@@ -40,7 +43,9 @@ export async function createRecord(payload = {}) {
   try {
     return await recordRepository.create({ moduleCode, recordCode, recordData, searchText });
   } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY") throw appError("业务编码已存在", 40001, 409);
+    if (error?.code === "ER_DUP_ENTRY") {
+      throw appError(`${schema.recordCodeField.name}「${recordCode}」已存在`, 40001, 409);
+    }
     throw error;
   }
 }
@@ -55,9 +60,16 @@ export async function updateRecord(bizType, bizCode, payload = {}) {
   if (!exists) throw appError("业务数据不存在", 40400, 404);
 
   const fields = payload.fields || {};
+  const requestedRecordCode = fields[schema.recordCodeField.code];
+  if (requestedRecordCode !== undefined && String(requestedRecordCode).trim() !== recordCode) {
+    throw appError(`${schema.recordCodeField.name}不允许修改`, 40000, 400);
+  }
+
   const recordData = {};
   for (const f of schema.fields) {
-    recordData[f.code] = String(fields[f.code] ?? "").trim();
+    recordData[f.code] = f.code === schema.recordCodeField.code
+      ? recordCode
+      : String(fields[f.code] ?? "").trim();
   }
 
   const searchText = schema.searchableFields
@@ -81,6 +93,9 @@ export async function generateImportTemplate(bizType) {
   const schema = await compileSchema(bizType);
   const headers = schema.fields.map((f) => f.name);
   const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+  const recordCodeColumn = schema.fields.findIndex((field) => field.code === schema.recordCodeField.code);
+  const recordCodeCell = worksheet[XLSX.utils.encode_cell({ r: 0, c: recordCodeColumn })];
+  recordCodeCell.c = [{ a: "系统", t: "必填，且在当前业务类型内唯一" }];
   worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, schema.module.label);
@@ -103,10 +118,10 @@ export async function importRecords(bizType, fileBuffer) {
   const codeColIdx = colFieldMap.findIndex((f) => f && f.code === schema.recordCodeField.code);
   if (codeColIdx < 0) throw appError(`Excel 表头中未找到"${schema.recordCodeField.name}"列`, 40000, 400);
 
-  const results = { total: 0, success: 0, errors: [] };
+  const results = { total: Math.max(0, rows.length - 1), success: 0, errors: [] };
+  const candidates = [];
   for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
     const row = rows[rowIdx];
-    results.total++;
     const fields = {};
     let hasValue = false;
     for (let ci = 0; ci < colFieldMap.length; ci++) {
@@ -117,11 +132,28 @@ export async function importRecords(bizType, fileBuffer) {
       if (value) hasValue = true;
     }
     if (!hasValue) continue;
+    candidates.push({ row: rowIdx + 1, fields, recordCode: String(fields[schema.recordCodeField.code] || "").trim() });
+  }
+
+  const recordCodeCounts = new Map();
+  for (const candidate of candidates) {
+    if (!candidate.recordCode) continue;
+    recordCodeCounts.set(candidate.recordCode, (recordCodeCounts.get(candidate.recordCode) || 0) + 1);
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.recordCode && recordCodeCounts.get(candidate.recordCode) > 1) {
+      results.errors.push({
+        row: candidate.row,
+        message: `${schema.recordCodeField.name}「${candidate.recordCode}」在导入文件中重复`,
+      });
+      continue;
+    }
     try {
-      await createRecord({ bizType, fields });
+      await createRecord({ bizType, fields: candidate.fields });
       results.success++;
     } catch (err) {
-      results.errors.push({ row: rowIdx + 1, message: err.message || "未知错误" });
+      results.errors.push({ row: candidate.row, message: err.message || "未知错误" });
     }
   }
   return results;

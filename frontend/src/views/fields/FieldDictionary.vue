@@ -318,7 +318,7 @@ async function handleCreateModule() {
       name: form.name.trim(),
       templateLabel: form.templateLabel.trim() || `${form.name.trim()}模板`,
       dataLabel: form.dataLabel.trim() || `${form.name.trim()}数据`,
-      codeField: form.codeField.trim(),
+      recordCodeField: form.codeField.trim(),
       fields: [{
         code: form.codeField.trim(),
         name: form.codeFieldName.trim(),

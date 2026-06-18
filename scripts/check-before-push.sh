@@ -8,9 +8,11 @@ echo "Checking backend JavaScript syntax..."
 node --check backend/src/server.js
 node --check backend/src/app.js
 node --check backend/src/controllers/businessDataController.js
-node --check backend/src/repositories/businessDataRepository.js
+node --check backend/src/repositories/businessModuleRepository.js
+node --check backend/src/repositories/fieldRepository.js
 node --check backend/src/routes/businessData.routes.js
-node --check backend/src/services/businessDataService.js
+node --check backend/src/services/businessModuleService.js
+node --check backend/src/services/recordService.js
 
 echo "Running frontend production build..."
 npm --prefix frontend run build
