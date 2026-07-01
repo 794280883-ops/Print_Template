@@ -141,7 +141,7 @@
         <a-form-item label="示例值">
           <a-input v-model:value="fieldForm.example" />
         </a-form-item>
-        <a-form-item label="排序">
+        <a-form-item label="排序" required>
           <a-input-number v-model:value="fieldForm.sortNo" :min="0" style="width:100%" />
         </a-form-item>
         <a-form-item label="说明">
@@ -271,7 +271,7 @@ function emptyFieldForm() {
     sortable: false,
     example: '',
     desc: '',
-    sortNo: 0,
+    sortNo: null,
   };
 }
 
@@ -389,6 +389,10 @@ async function handleSaveField() {
   const form = fieldForm.value;
   if (!form.code.trim() || !form.name.trim()) {
     message.error('请填写字段编码和中文名称');
+    return;
+  }
+  if (form.sortNo === null || form.sortNo === undefined || form.sortNo === '') {
+    message.error('请填写排序号');
     return;
   }
   saving.value = true;

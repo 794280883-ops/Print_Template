@@ -85,12 +85,13 @@ wms-print-template-center/
 ├── frontend/                 # 前端工程
 │   ├── src/
 │   │   ├── api/              # API 封装
-│   │   ├── components/       # 公共组件
 │   │   ├── data/             # 数据常量
 │   │   ├── directives/       # 自定义指令
 │   │   ├── layouts/          # 布局组件
 │   │   ├── router/           # 路由配置
+│   │   ├── services/         # 业务服务
 │   │   ├── stores/           # 状态管理
+│   │   ├── styles/           # 全局样式
 │   │   ├── views/            # 页面视图
 │   │   ├── App.vue           # 根组件
 │   │   └── main.js           # 入口文件
@@ -115,32 +116,32 @@ wms-print-template-center/
 
 ### 库位 (LOCATION)
 
-| 字段编码 | 名称 | 必填 |
-|----------|------|------|
-| locationCode | 库位编码 | 是 |
-| locationPrefix | 库位前缀 | — |
-| row | 排 | — |
-| column | 列 | — |
-| level | 层 | — |
-| directionMark | 方向标 | — |
-| warehouseCode | 区域仓编码 | 是 |
-| areaCode | 物理仓编码 | — |
+| 字段编码 | 名称 | 必填 | 可查询 |
+|----------|------|------|--------|
+| locationCode | 库位编码 | 是 | 是 |
+| locationPrefix | 库位前缀 | — | — |
+| row | 排 | — | — |
+| column | 列 | — | — |
+| level | 层 | — | — |
+| directionMark | 方向标 | — | — |
+| warehouseCode | 区域仓编码 | 是 | 是 |
+| areaCode | 物理仓编码 | — | 是 |
 
 ### 容器 (CONTAINER)
 
-| 字段编码 | 名称 | 必填 |
-|----------|------|------|
-| containerCode | 容器编码 | 是 |
-| warehouseCode | 区域仓编码 | — |
-| areaCode | 物理仓编码 | — |
+| 字段编码 | 名称 | 必填 | 可查询 |
+|----------|------|------|--------|
+| containerCode | 容器编码 | 是 | 是 |
+| warehouseCode | 区域仓编码 | — | — |
+| areaCode | 物理仓编码 | — | — |
 
 ### 商品 (PRODUCT)
 
-| 字段编码 | 名称 | 必填 |
-|----------|------|------|
-| productCode | 商品编码 | 是 |
-| ProductBarcode | 商品条码 | — |
-| customerProductCode | 客户商品编码 | — |
+| 字段编码 | 名称 | 必填 | 可查询 |
+|----------|------|------|--------|
+| productCode | 商品编码 | 是 | 是 |
+| ProductBarcode | 商品条码 | — | — |
+| customerProductCode | 客户商品编码 | — | — |
 
 ### 方向标规则
 
@@ -178,8 +179,7 @@ git status --short --branch
 
 | 目录 | 用途 |
 |------|------|
-| `test-media/` | 测试截图和录屏（*.png, *.webm 等） |
-| `test-reports/` | 测试报告和用例脚本 |
+| `test-reports/` | 历史测试报告（当前为空） |
 | `docs/` | 项目文档 |
 
 - 禁止将图片/视频直接放在项目根目录
@@ -189,6 +189,5 @@ git status --short --branch
 ### Playwright 测试规范
 
 - 复用已有浏览器窗口，不重复打开
-- 测试完成后保持浏览器开启，便于人工检查
-- 禁止使用 `npx playwright-cli close`
+- 验证完成后调用 `npx playwright-cli close` 关闭浏览器（避免占用资源，与 `memory/feedback-auto-playwright-verify` 一致）
 - 测试需覆盖页面所有可交互元素（按钮、输入框、下拉框、复选框、链接等）
