@@ -44,6 +44,11 @@
               {{ record.required ? '必填' : '选填' }}
             </a-tag>
           </template>
+          <template v-else-if="column.key === 'searchable'">
+            <a-tag :color="record.searchable ? 'blue' : 'default'">
+              {{ record.searchable ? '是' : '否' }}
+            </a-tag>
+          </template>
           <template v-else-if="column.key === 'status'">
             <a-tag :color="record.enabled !== false ? 'green' : 'default'">
               {{ record.enabled !== false ? '启用' : '停用' }}
@@ -128,8 +133,10 @@
         <a-form-item>
           <a-space>
             <a-checkbox v-model:checked="fieldForm.required">必填</a-checkbox>
+            <a-checkbox v-model:checked="fieldForm.searchable" :disabled="isCodeField">启用查询</a-checkbox>
             <a-checkbox v-model:checked="fieldForm.sortable">支持排序</a-checkbox>
           </a-space>
+          <div v-if="isCodeField" style="font-size:12px;color:#999;margin-top:4px">业务编码字段默认启用查询，不可取消</div>
         </a-form-item>
         <a-form-item label="示例值">
           <a-input v-model:value="fieldForm.example" />
@@ -184,6 +191,7 @@ const columns = ref([
   { title: '字段编码', dataIndex: 'code', key: 'code', resizable: true, width: 180 },
   { title: '类型', dataIndex: 'type', key: 'type', resizable: true, width: 70 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 70 },
+  { title: '可查询', dataIndex: 'searchable', key: 'searchable', width: 70 },
   { title: '状态', key: 'status', width: 70 },
   { title: '示例值', key: 'example', resizable: true, width: 180 },
   { title: '说明', dataIndex: 'desc', key: 'desc', resizable: true, width: 200, ellipsis: true },
@@ -201,6 +209,10 @@ const fieldForm = ref(emptyFieldForm());
 const moduleOptions = computed(() => modules.value.length ? modules.value : FALLBACK_MODULES);
 const builtInCodes = new Set(BUILT_IN_MODULE_CODES);
 const activeModule = computed(() => moduleOptions.value.find(item => item.code === activeType.value));
+const isCodeField = computed(() => {
+  const codeField = activeModule.value?.codeField || activeModule.value?.recordCodeField;
+  return fieldForm.value.code === codeField;
+});
 const canDeleteActiveModule = computed(() => !!activeType.value && !builtInCodes.has(activeType.value));
 
 const fields = computed(() => {
@@ -255,6 +267,7 @@ function emptyFieldForm() {
     name: '',
     type: 'string',
     required: false,
+    searchable: true,
     sortable: false,
     example: '',
     desc: '',
@@ -297,6 +310,7 @@ function openEditFieldModal(record) {
     name: record.name,
     type: record.type || 'string',
     required: !!record.required,
+    searchable: record.searchable !== false,
     sortable: !!record.sortable,
     example: record.example || '',
     desc: record.desc || '',
@@ -324,6 +338,7 @@ async function handleCreateModule() {
         name: form.codeFieldName.trim(),
         type: 'string',
         required: true,
+        searchable: true,
         sortNo: 10,
       }],
     });
@@ -383,6 +398,7 @@ async function handleSaveField() {
       name: form.name.trim(),
       type: form.type,
       required: !!form.required,
+      searchable: isCodeField.value ? true : !!form.searchable,
       sortable: !!form.sortable,
       example: form.example.trim(),
       desc: form.desc.trim(),

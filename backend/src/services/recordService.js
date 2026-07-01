@@ -12,8 +12,28 @@ export async function searchRecords(query = {}) {
   const schema = await compileSchema(moduleCode);
   const sort = resolveRecordSortOptions(query, schema);
   const allowedSortFields = getAllowedSortFields(schema);
+
+  const searchableFieldCodes = new Set(schema.searchableFields.map((f) => f.code));
+  if (schema.recordCodeField) searchableFieldCodes.add(schema.recordCodeField.code);
+
+  let rawFieldFilters = query.fieldFilters;
+  if (typeof rawFieldFilters === "string") {
+    try { rawFieldFilters = JSON.parse(rawFieldFilters); } catch { rawFieldFilters = {}; }
+  }
+
+  const fieldFilters = {};
+  if (rawFieldFilters && typeof rawFieldFilters === "object") {
+    for (const [code, value] of Object.entries(rawFieldFilters)) {
+      const v = String(value || "").trim();
+      if (v && searchableFieldCodes.has(code)) {
+        fieldFilters[code] = v;
+      }
+    }
+  }
+
   return recordRepository.search(moduleCode, {
     keyword: String(query.keyword || "").trim(),
+    fieldFilters,
     page: query.page,
     pageSize: query.pageSize,
     sortField: sort.sortField,

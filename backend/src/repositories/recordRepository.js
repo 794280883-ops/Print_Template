@@ -1,6 +1,6 @@
 import { pool } from "../config/db.js";
 
-export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sortField, sortDir, allowedSortFields = [] } = {}) {
+export async function search(moduleCode, { keyword, fieldFilters = {}, page = 1, pageSize = 20, sortField, sortDir, allowedSortFields = [] } = {}) {
   const safePage = Math.max(1, Number(page) || 1);
   const safeSize = Math.min(200, Math.max(1, Number(pageSize) || 20));
   const offset = (safePage - 1) * safeSize;
@@ -21,6 +21,12 @@ export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sor
       where += ` AND record_code IN (${placeholders})`;
       params.push(...codes);
     }
+  }
+
+  for (const [fieldCode, value] of Object.entries(fieldFilters)) {
+    if (!/^[A-Za-z0-9_]+$/.test(fieldCode)) continue;
+    where += ` AND JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${fieldCode}"')) = ?`;
+    params.push(value);
   }
 
   const [[{ total }]] = await pool.query(

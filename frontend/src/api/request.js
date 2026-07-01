@@ -33,7 +33,14 @@ export async function request(path, options = {}) {
 export function toQuery(params = {}) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") search.set(key, value);
+    if (value !== undefined && value !== null && value !== "") {
+      if (typeof value === "object") {
+        const json = JSON.stringify(value);
+        if (json !== "{}") search.set(key, json);
+      } else {
+        search.set(key, value);
+      }
+    }
   });
   const text = search.toString();
   return text ? `?${text}` : "";

@@ -18,6 +18,15 @@
             @press-enter="handleSearch"
           />
         </a-form-item>
+        <a-form-item v-for="f in searchableFields" :key="f.code" :label="f.name">
+          <a-input
+            v-model:value="fieldFilters[f.code]"
+            :placeholder="'输入' + f.name"
+            allow-clear
+            style="width:160px;"
+            @press-enter="handleSearch"
+          />
+        </a-form-item>
         <a-form-item>
           <a-button type="primary" @click="handleSearch">
             <template #icon><search-outlined /></template>
@@ -216,6 +225,7 @@ const selectedTemplate = ref(null);
 const printCopies = ref(1);
 const printLoading = ref(false);
 const filters = reactive({ type: 'LOCATION', keyword: '', page: 1, pageSize: 20, sortField: 'locationCode', sortDir: 'ASC' });
+const fieldFilters = reactive({});
 const total = ref(0);
 const modules = ref([]);
 const fieldsByType = ref({});
@@ -252,6 +262,10 @@ const currentFields = computed(() => {
   }));
 });
 
+const searchableFields = computed(() => {
+  return currentFields.value.filter((f) => f.searchable && f.code !== codeFieldCode.value);
+});
+
 const codeFieldCode = computed(() => currentModule.value?.codeField || currentFields.value[0]?.code || '');
 const typeLabel = computed(() => currentModule.value?.name || TYPE_LABEL[filters.type] || filters.type);
 
@@ -284,7 +298,7 @@ async function fetchModules() {
 }
 
 async function fetchFields(type) {
-  if (!type || fieldsByType.value[type]) return;
+  if (!type) return;
   try {
     fieldsByType.value = {
       ...fieldsByType.value,
@@ -300,6 +314,7 @@ async function fetchData() {
   try {
     const result = await listBusinessData(filters.type, {
       keyword: filters.keyword,
+      fieldFilters: { ...fieldFilters },
       page: filters.page,
       pageSize: filters.pageSize,
       sortField: filters.sortField,
@@ -315,7 +330,7 @@ async function fetchData() {
 }
 
 function handleSearch() { filters.page = 1; fetchData(); }
-function handleReset() { filters.keyword = ''; filters.page = 1; fetchData(); }
+function handleReset() { filters.keyword = ''; Object.keys(fieldFilters).forEach(k => delete fieldFilters[k]); filters.page = 1; fetchData(); }
 function handleTableChange(pag, _filters, sorter) {
   filters.page = pag.current;
   filters.pageSize = pag.pageSize;
@@ -566,6 +581,8 @@ async function handleBatchDelete() {
 
 watch(() => filters.type, async () => {
   filters.page = 1;
+  filters.keyword = '';
+  Object.keys(fieldFilters).forEach(k => delete fieldFilters[k]);
   await fetchFields(filters.type);
   filters.sortField = codeFieldCode.value || currentFields.value[0]?.code || 'businessCode';
   filters.sortDir = 'ASC';
