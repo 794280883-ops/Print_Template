@@ -67,14 +67,15 @@ function getAllowedSortFields(schema = {}) {
   ].filter(Boolean);
 }
 
-export async function createRecord(payload = {}) {
+export async function createRecord(payload = {}, options = {}) {
   const moduleCode = String(payload.bizType || payload.type || "").toUpperCase();
   const schema = await compileSchema(moduleCode);
   const fields = payload.fields || {};
+  const { skipUniqueCheck = false } = options;
 
   const recordCode = String(fields[schema.recordCodeField.code] || "").trim();
   if (!recordCode) throw appError(`${schema.recordCodeField.name}必填`, 40000, 400);
-  if (await recordRepository.getByCode(moduleCode, recordCode)) {
+  if (!skipUniqueCheck && await recordRepository.getByCode(moduleCode, recordCode)) {
     throw appError(`${schema.recordCodeField.name}「${recordCode}」已存在`, 40001, 409);
   }
 
@@ -91,7 +92,7 @@ export async function createRecord(payload = {}) {
   try {
     return await recordRepository.create({ moduleCode, recordCode, recordData, searchText });
   } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY") {
+    if (!skipUniqueCheck && error?.code === "ER_DUP_ENTRY") {
       throw appError(`${schema.recordCodeField.name}「${recordCode}」已存在`, 40001, 409);
     }
     throw error;
@@ -155,19 +156,10 @@ export async function generateImportTemplate(bizType) {
   const schema = await compileSchema(bizType);
   const headers = schema.fields.map((f) => f.name);
   const worksheet = XLSX.utils.aoa_to_sheet([headers]);
-  const recordCodeColumn = schema.fields.findIndex((field) => field.code === schema.recordCodeField.code);
-  const recordCodeCell = worksheet[XLSX.utils.encode_cell({ r: 0, c: recordCodeColumn })];
-  recordCodeCell.c = createRecordCodeComment();
   worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, schema.module.label);
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-}
-
-export function createRecordCodeComment() {
-  const comment = [{ a: "系统", t: "必填，且在当前业务类型内唯一" }];
-  comment.hidden = true;
-  return comment;
 }
 
 export async function importRecords(bizType, fileBuffer) {
@@ -203,22 +195,9 @@ export async function importRecords(bizType, fileBuffer) {
     candidates.push({ row: rowIdx + 1, fields, recordCode: String(fields[schema.recordCodeField.code] || "").trim() });
   }
 
-  const recordCodeCounts = new Map();
   for (const candidate of candidates) {
-    if (!candidate.recordCode) continue;
-    recordCodeCounts.set(candidate.recordCode, (recordCodeCounts.get(candidate.recordCode) || 0) + 1);
-  }
-
-  for (const candidate of candidates) {
-    if (candidate.recordCode && recordCodeCounts.get(candidate.recordCode) > 1) {
-      results.errors.push({
-        row: candidate.row,
-        message: `${schema.recordCodeField.name}「${candidate.recordCode}」在导入文件中重复`,
-      });
-      continue;
-    }
     try {
-      await createRecord({ bizType, fields: candidate.fields });
+      await createRecord({ bizType, fields: candidate.fields }, { skipUniqueCheck: true });
       results.success++;
     } catch (err) {
       results.errors.push({ row: candidate.row, message: err.message || "未知错误" });

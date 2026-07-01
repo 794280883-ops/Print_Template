@@ -56,14 +56,3 @@ test("deleteRecords rejects empty selection", async () => {
     /请选择要删除的业务数据/,
   );
 });
-
-test("createRecordCodeComment marks import template note as hidden by default", () => {
-  assert.equal(typeof recordService.createRecordCodeComment, "function");
-
-  const comment = recordService.createRecordCodeComment();
-
-  assert.equal(comment.hidden, true);
-  assert.equal(comment[0].a, "系统");
-  assert.match(comment[0].t, /必填/);
-  assert.match(comment[0].t, /当前业务类型内唯一/);
-});

@@ -473,7 +473,7 @@ test("custom module business data uses business_data JSON storage", async () => 
   }
 });
 
-test("business data import template marks the primary field as required", async () => {
+test("business data import template returns headers without comment", async () => {
   const server = await listen(createApp());
   try {
     const port = server.address().port;
@@ -482,8 +482,8 @@ test("business data import template marks the primary field as required", async 
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
     assert.equal(response.status, 200);
-    assert.match(worksheet.A1.c?.[0]?.t || "", /必填/);
-    assert.match(worksheet.A1.c?.[0]?.t || "", /当前业务类型内唯一/);
+    assert.equal(worksheet.A1.v, "库位编码");
+    assert.equal(worksheet.A1.c, undefined);
   } finally {
     server.close();
   }
@@ -528,7 +528,7 @@ test("business data primary field is unique and cannot be changed", async () => 
   }
 });
 
-test("business data import rejects existing and file-duplicate primary values", async () => {
+test("business data import allows duplicate and existing primary values", async () => {
   const server = await listen(createApp());
   const suffix = Date.now().toString(36).toUpperCase();
   const existingCode = `IMP_EXIST_${suffix}`;
@@ -563,16 +563,14 @@ test("business data import rejects existing and file-duplicate primary values", 
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.equal(body.data.total, 4);
-    assert.equal(body.data.success, 1);
-    assert.equal(body.data.errors.length, 3);
-    assert.equal(body.data.errors.filter((item) => item.message.includes("导入文件中重复")).length, 2);
-    assert.equal(body.data.errors.some((item) => item.message.includes("已存在")), true);
+    assert.equal(body.data.success, 4);
+    assert.equal(body.data.errors.length, 0);
 
     const [rows] = await pool.query(
-      "SELECT record_code FROM business_record WHERE module_code = ? AND record_code IN (?, ?)",
-      ["LOCATION", duplicateCode, validCode],
+      "SELECT record_code FROM business_record WHERE module_code = ? AND record_code IN (?, ?, ?)",
+      ["LOCATION", existingCode, duplicateCode, validCode],
     );
-    assert.deepEqual(rows.map((item) => item.record_code), [validCode]);
+    assert.equal(rows.length, 4);
   } finally {
     await pool.query("DELETE FROM business_record WHERE module_code = ? AND record_code IN (?, ?, ?)", [
       "LOCATION",
