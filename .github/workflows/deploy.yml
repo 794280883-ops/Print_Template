@@ -50,5 +50,20 @@ jobs:
             fi
 
             docker compose ps
-            sleep 3
-            curl -fsSk https://127.0.0.1/api/v1/health
+            echo "Waiting for backend health check..."
+            for i in $(seq 1 30); do
+              HTTP_CODE=$(curl -s -o /tmp/health_resp -w "%{http_code}" -k https://127.0.0.1/api/v1/health || echo "000")
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "Health check passed after ${i} attempt(s)"
+                cat /tmp/health_resp
+                rm -f /tmp/health_resp
+                exit 0
+              fi
+              echo "Attempt ${i}/30: HTTP $HTTP_CODE, retrying in 5s..."
+              sleep 5
+            done
+            echo "Health check failed after 30 attempts"
+            echo "=== Backend logs ==="
+            docker compose logs --tail=50 backend
+            rm -f /tmp/health_resp
+            exit 1
