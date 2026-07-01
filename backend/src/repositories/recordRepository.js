@@ -9,8 +9,18 @@ export async function search(moduleCode, { keyword, page = 1, pageSize = 20, sor
   const params = [moduleCode];
 
   if (keyword) {
-    where += " AND search_text LIKE ?";
-    params.push(`%${keyword}%`);
+    const codes = String(keyword)
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (codes.length === 1) {
+      where += " AND record_code LIKE ?";
+      params.push(`%${codes[0]}%`);
+    } else if (codes.length > 1) {
+      const placeholders = codes.map(() => "?").join(", ");
+      where += ` AND record_code IN (${placeholders})`;
+      params.push(...codes);
+    }
   }
 
   const [[{ total }]] = await pool.query(

@@ -16,7 +16,7 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN || "http://127.0.0.1:5173",
   jwtSecret,
   pdf: {
-    cjkFontPath: process.env.PDF_CJK_FONT_PATH || "/Library/Fonts/Arial Unicode.ttf",
+    cjkFontPath: process.env.PDF_CJK_FONT_PATH || new URL("../../fonts/ArialUnicode.ttf", import.meta.url).pathname,
   },
   db: {
     host: process.env.DB_HOST || "127.0.0.1",

@@ -58,7 +58,7 @@ export async function upsertField(moduleCode, field, db = pool) {
   return getField(code, field.code, db);
 }
 
-async function getField(moduleCode, fieldCode, db = pool) {
+export async function getField(moduleCode, fieldCode, db = pool) {
   const [rows] = await db.query(
     `SELECT module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable
      FROM print_field_dict

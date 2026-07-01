@@ -41,6 +41,9 @@ export async function enableField(moduleCode, fieldCode) {
 }
 
 export async function deleteField(moduleCode, fieldCode) {
+  const field = await fieldRepository.getField(moduleCode, fieldCode);
+  if (!field) throw appError("字段不存在", 40400, 404);
+  if (field.is_required) throw appError("必填字段不允许删除，请先取消必填或停用该字段", 40002, 409);
   const references = await fieldRepository.countFieldReferences(moduleCode, fieldCode);
   if (references > 0) throw appError("字段已被模板引用，不能删除", 40002, 409, { references });
   const affectedRows = await fieldRepository.deleteField(moduleCode, fieldCode);
