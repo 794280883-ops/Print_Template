@@ -130,22 +130,14 @@ CREATE TABLE IF NOT EXISTS business_record (
 
 -- ========== seeds ==========
 
-INSERT INTO print_business_module
+INSERT IGNORE INTO print_business_module
   (module_code, module_name, template_label, data_label, record_code_field, storage_mode, enabled, sort_no)
 VALUES
   ('LOCATION', '库位', '库位模板', '库位数据', 'locationCode', 'json_table', 1, 10),
   ('CONTAINER', '容器', '容器模板', '容器数据', 'containerCode', 'json_table', 1, 20),
-  ('PRODUCT', '商品', '商品模板', '商品数据', 'productCode', 'json_table', 1, 30)
-ON DUPLICATE KEY UPDATE
-  module_name = VALUES(module_name),
-  template_label = VALUES(template_label),
-  data_label = VALUES(data_label),
-  record_code_field = VALUES(record_code_field),
-  storage_mode = VALUES(storage_mode),
-  enabled = VALUES(enabled),
-  sort_no = VALUES(sort_no);
+  ('PRODUCT', '商品', '商品模板', '商品数据', 'productCode', 'json_table', 1, 30);
 
-INSERT INTO print_field_dict
+INSERT IGNORE INTO print_field_dict
   (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, searchable, sortable)
 VALUES
   ('LOCATION','locationCode','库位编码','string','DD1801-004A',1,'库位唯一标识编码',10,1,1),
@@ -161,12 +153,7 @@ VALUES
   ('CONTAINER','areaCode','物理仓编码','string','JP01',0,'物理仓编码',30,1,1),
   ('PRODUCT','productCode','商品编码','string','SKU-10001',1,'商品编码',10,1,1),
   ('PRODUCT','ProductBarcode','商品条码','string','TM001',0,'商品条码',15,1,1),
-  ('PRODUCT','customerProductCode','客户商品编码','string','CUST-SKU-10001',0,'客户商品编码',20,1,1)
-ON DUPLICATE KEY UPDATE
-  field_name = VALUES(field_name), field_type = VALUES(field_type),
-  example_value = VALUES(example_value), is_required = VALUES(is_required),
-  description = VALUES(description), sort_no = VALUES(sort_no),
-  searchable = VALUES(searchable), sortable = VALUES(sortable);
+  ('PRODUCT','customerProductCode','客户商品编码','string','CUST-SKU-10001',0,'客户商品编码',20,1,1);
 
 INSERT IGNORE INTO print_template
   (id, template_code, template_name, template_type, width_mm, height_mm, unit, dpi, status, remark)

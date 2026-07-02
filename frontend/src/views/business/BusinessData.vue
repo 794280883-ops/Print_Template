@@ -283,7 +283,8 @@ const currentFields = computed(() => {
     .map((field) => ({
       ...field,
       required: !!field.required,
-    }));
+    }))
+    .sort((a, b) => (a.sortNo || 0) - (b.sortNo || 0));
 });
 
 const searchableFields = computed(() => {

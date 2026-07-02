@@ -18,7 +18,7 @@ export async function compileSchema(moduleCode) {
     sortable: Boolean(r.sortable),
     unique: Boolean(r.is_unique),
     bindableInTemplate: r.bindable_in_template !== 0,
-  }));
+  })).sort((a, b) => a.sortNo - b.sortNo);
 
   const recordCodeField = fields.find((f) => f.code === mod.record_code_field);
   if (!recordCodeField) throw appError(`模块 ${code} 的主编码字段不存在`, 50000, 500);
