@@ -15,12 +15,13 @@
 
 | 层 | 技术选型 |
 |---|---|
-| 前端 | Vite + Vue 3 + Ant Design Vue 4.x |
-| 后端 | Node.js + Express (REST API) |
-| 数据库 | MySQL 8.4 |
+| 前端 | Vite 7 + Vue 3.5 + Ant Design Vue 4.x + Pinia + Vue Router 4 |
+| 后端 | Node.js 22 + Express 5.2 (REST API) + JWT鉴权 |
+| 数据库 | MySQL 8.4 (Docker) |
+| PDF生成 | PDFKit + bwip-js（条码）+ qrcode（二维码） |
 | 容器化 | Docker + Docker Compose |
-| 网关 | Nginx（反向代理 + 静态资源） |
-| 部署 | 阿里云 ECS + Shell 部署脚本 |
+| 网关 | Nginx 1.27（反向代理 + 静态资源 + HTTPS） |
+| 部署 | 阿里云 ECS + Shell 一键部署脚本 |
 
 ## 本地开发
 
@@ -37,7 +38,7 @@ docker start mysql
 ### 2. 启动项目
 
 ```bash
-cd /Users/l/Documents/Codex/wms-print-template-center
+cd /Users/l/Documents/Wms_Print/wms-print-template-center
 ./scripts/dev-local.sh
 ```
 
@@ -73,29 +74,53 @@ open -a "DataGrip" "jdbc:mysql://127.0.0.1:3306/wms_print_template"
 
 ```text
 wms-print-template-center/
-├── .env.example              # 环境变量示例
+├── .env.example              # 本地开发环境变量示例
 ├── .env.production.example   # 生产环境变量示例
+├── .env.test.example        # 测试环境变量示例
 ├── docker-compose.yml        # Docker 编排配置
 ├── README.md
 ├── backend/                  # 后端服务
+│   ├── fonts/                # PDF 中文字体
 │   ├── migrations/           # 数据库迁移脚本
-│   ├── scripts/              # 后端工具脚本
-│   └── src/                  # 源代码
+│   ├── scripts/              # 后端工具脚本（迁移执行等）
+│   ├── tests/                # 后端测试
+│   ├── src/
+│   │   ├── config/           # 数据库、环境变量配置
+│   │   ├── controllers/      # 控制器（请求处理）
+│   │   ├── middlewares/      # 中间件（认证、错误处理）
+│   │   ├── repositories/     # 数据访问层（SQL操作）
+│   │   ├── routes/           # 路由定义
+│   │   ├── services/         # 业务逻辑层
+│   │   ├── utils/            # 工具函数（DSL校验、响应封装）
+│   │   ├── app.js            # Express应用配置
+│   │   └── server.js         # 服务入口
+│   ├── Dockerfile
+│   └── package.json
 ├── docs/                     # 项目文档
 ├── frontend/                 # 前端工程
+│   ├── tests/                # 前端测试
 │   ├── src/
-│   │   ├── api/              # API 封装
+│   │   ├── api/              # API 封装（axios请求）
 │   │   ├── data/             # 数据常量
-│   │   ├── directives/       # 自定义指令
-│   │   ├── layouts/          # 布局组件
-│   │   ├── router/           # 路由配置
-│   │   ├── services/         # 业务服务
-│   │   ├── stores/           # 状态管理
+│   │   ├── directives/       # 自定义指令（v-permission）
+│   │   ├── layouts/          # 布局组件（AppLayout/LoginLayout等）
+│   │   ├── router/           # 路由配置+守卫
+│   │   ├── services/         # 业务服务（校验、下载、缩放等）
+│   │   ├── stores/           # Pinia状态管理（权限session）
 │   │   ├── styles/           # 全局样式
 │   │   ├── views/            # 页面视图
+│   │   │   ├── business/     # 业务数据页
+│   │   │   ├── error/        # 403等错误页
+│   │   │   ├── fields/       # 模版字段页
+│   │   │   ├── home/         # 首页
+│   │   │   ├── login/        # 登录页
+│   │   │   ├── system/       # 系统管理（用户/角色/菜单）
+│   │   │   └── templates/    # 模板列表+设计器
 │   │   ├── App.vue           # 根组件
 │   │   └── main.js           # 入口文件
-│   └── index.html
+│   ├── index.html
+│   ├── vite.config.js
+│   └── package.json
 ├── nginx/                    # Nginx 配置
 └── scripts/                  # 部署脚本
     ├── check-before-push.sh  # 提交前检查
@@ -105,58 +130,38 @@ wms-print-template-center/
 
 ## 文档
 
+- [功能清单](docs/功能清单.md)
+- [变更日志](docs/变更日志.md)
 - [本地开发指南](docs/本地开发指南.md)
 - [服务器部署指南](docs/服务器部署指南.md)
 - [接口文档](docs/接口文档.md)
 - [数据库设计](docs/数据库设计.md)
+- [环境变量说明](docs/环境变量说明.md)
+- [系统流程](docs/系统流程.md)
+- [用户操作手册](docs/用户操作手册.md)
+- [权限系统开发规范](docs/权限系统开发规范.md)
+- [测试指南](docs/测试指南.md)
+- [项目架构总览](docs/项目架构总览.md)
+- [后端服务层说明](docs/后端服务层说明.md)
 
 ## 字段映射参考
 
-所有业务数据统一存储在 `business_record` 表中，字段为 JSON 键值对。字段 schema 由 `print_field_dict` + `print_business_module` 运行时动态编译，无需硬编码映射。
+所有业务数据统一存储在 `business_record` 表中，字段 schema 由 `print_field_dict` + `print_business_module` 运行时动态编译，无需硬编码映射。
 
-### 库位 (LOCATION)
+系统预置三个业务模块的字段，完整字段定义（含可排序、是否必填、是否启用查询等属性）见 [数据库设计 - 字段字典定义](docs/数据库设计.md#字段字典定义)：
 
-| 字段编码 | 名称 | 必填 | 可查询 |
-|----------|------|------|--------|
-| locationCode | 库位编码 | 是 | 是 |
-| locationPrefix | 库位前缀 | — | — |
-| row | 排 | — | — |
-| column | 列 | — | — |
-| level | 层 | — | — |
-| directionMark | 方向标 | — | — |
-| warehouseCode | 区域仓编码 | 是 | 是 |
-| areaCode | 物理仓编码 | — | 是 |
+- **库位（8个字段）**：库位编码、库位前缀、排、列、层、方向标、区域仓编码、物理仓编码
+- **容器（3个字段）**：容器编码、区域仓编码、物理仓编码
+- **商品（3个字段）**：商品编码、商品条码、客户商品编码
 
-### 容器 (CONTAINER)
-
-| 字段编码 | 名称 | 必填 | 可查询 |
-|----------|------|------|--------|
-| containerCode | 容器编码 | 是 | 是 |
-| warehouseCode | 区域仓编码 | — | — |
-| areaCode | 物理仓编码 | — | — |
-
-### 商品 (PRODUCT)
-
-| 字段编码 | 名称 | 必填 | 可查询 |
-|----------|------|------|--------|
-| productCode | 商品编码 | 是 | 是 |
-| ProductBarcode | 商品条码 | — | — |
-| customerProductCode | 客户商品编码 | — | — |
-
-### 方向标规则
-
-```
-direction_flag = 1  → 显示"向上" → 打印 ↑
-direction_flag = 2  → 显示"向下" → 打印 ↓
-direction_flag = 空 → 显示空 → 打印空
-```
+> 方向标规则详见 [数据库设计 - 方向标规则](docs/数据库设计.md#方向标规则)
 
 ## 给后续开发者
 
 继续开发前先执行：
 
 ```bash
-cd /Users/l/Documents/Codex/wms-print-template-center
+cd /Users/l/Documents/Wms_Print/wms-print-template-center
 git status --short --branch
 ./scripts/dev-local.sh    # 本地调试
 ./scripts/check-before-push.sh  # 提交前检查
@@ -179,15 +184,10 @@ git status --short --branch
 
 | 目录 | 用途 |
 |------|------|
-| `test-reports/` | 历史测试报告（当前为空） |
 | `docs/` | 项目文档 |
+| `backend/tests/` | 后端单元测试 |
+| `frontend/tests/` | 前端单元测试 |
 
 - 禁止将图片/视频直接放在项目根目录
 - 测试截图按步骤顺序命名（如 `step1-xxx.png`）
 - 定期清理不再需要的临时测试文件
-
-### Playwright 测试规范
-
-- 复用已有浏览器窗口，不重复打开
-- 验证完成后调用 `npx playwright-cli close` 关闭浏览器（避免占用资源，与 `memory/feedback-auto-playwright-verify` 一致）
-- 测试需覆盖页面所有可交互元素（按钮、输入框、下拉框、复选框、链接等）

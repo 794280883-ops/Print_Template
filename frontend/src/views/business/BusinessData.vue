@@ -79,7 +79,7 @@
           v-model:pageSize="filters.pageSize"
           :total="total"
           :show-size-changer="true"
-          :show-quick-jumper="{ goButton: true }"
+
           :page-size-options="['10', '20', '50', '100']"
           size="small"
           @change="fetchData"

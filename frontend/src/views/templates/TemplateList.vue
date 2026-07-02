@@ -120,7 +120,7 @@
           v-model:pageSize="pagination.pageSize"
           :total="pagination.total"
           :show-size-changer="true"
-          :show-quick-jumper="{ goButton: true }"
+
           :page-size-options="['10', '20', '50', '100']"
           size="small"
           @change="onPageChange"
