@@ -24,7 +24,7 @@ jobs:
             # Pull latest code (tolerate network flakes)
             git fetch origin main 2>/dev/null || true
             git checkout main
-            git pull --ff-only origin main 2>/dev/null || true
+            git pull --ff-only origin main 2>/dev/null || { echo "git pull failed, resetting to origin/main"; git reset --hard origin/main; }
 
             # Determine which services need rebuild
             CHANGED=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
