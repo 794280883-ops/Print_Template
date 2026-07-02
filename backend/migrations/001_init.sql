@@ -2,6 +2,11 @@
 -- 001_init.sql — unified backend platform complete schema + seeds
 -- ============================================================
 
+-- 0. migration tracking
+CREATE TABLE IF NOT EXISTS _migrations (
+  filename VARCHAR(255) PRIMARY KEY,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 1. template
 CREATE TABLE IF NOT EXISTS print_template (
