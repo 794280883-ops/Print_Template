@@ -50,6 +50,13 @@ export function listFields(templateType) {
 }
 
 /**
+ * Get the last template the current user printed for a business type.
+ */
+export function getLastPrintTemplate(businessType) {
+  return request(`/print/last-template?businessType=${encodeURIComponent(String(businessType).toUpperCase())}`);
+}
+
+/**
  * Generate and download a PDF for template printing.
  * Returns a Blob that can be used to trigger a browser download.
  */

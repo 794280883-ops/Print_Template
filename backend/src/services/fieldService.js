@@ -72,6 +72,7 @@ export function normalizeField(payload = {}, { requireCode } = {}) {
     sortNo: Number(payload.sortNo ?? payload.sort_no ?? 0) || 0,
     searchable: Boolean(payload.searchable),
     sortable: Boolean(payload.sortable),
+    isUnique: Boolean(payload.isUnique),
   };
 }
 
@@ -87,5 +88,6 @@ function toDto(row) {
     enabled: row.enabled !== 0,
     searchable: Boolean(row.searchable),
     sortable: Boolean(row.sortable),
+    isUnique: Boolean(row.is_unique),
   };
 }

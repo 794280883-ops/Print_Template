@@ -113,6 +113,25 @@
           </template>
         </template>
       </a-table>
+      <div class="page-bar">
+        <span class="page-total">共 {{ pagination.total }} 条</span>
+        <a-pagination
+          v-model:current="pagination.current"
+          v-model:pageSize="pagination.pageSize"
+          :total="pagination.total"
+          :show-size-changer="true"
+          :show-quick-jumper="{ goButton: true }"
+          :page-size-options="['10', '20', '50', '100']"
+          size="small"
+          @change="onPageChange"
+          @showSizeChange="onPageSizeChange"
+        />
+        <span class="page-divider">|</span>
+        <span class="page-label">自定义每页</span>
+        <a-input-number v-model:value="customPageSize" :min="1" :max="10000" size="small" style="width:80px" @press-enter="applyCustomPageSize" />
+        <a-button size="small" type="primary" ghost @click="applyCustomPageSize">应用</a-button>
+        <span class="page-suffix">条</span>
+      </div>
     </a-card>
 
     <!-- Preview Modal -->
@@ -288,6 +307,18 @@ const pagination = reactive({
   pageSize: 10,
   total: 0,
 });
+const customPageSize = ref(null);
+
+function applyCustomPageSize() {
+  const size = Number(customPageSize.value);
+  if (!size || size < 1) {
+    message.warning('每页条数需大于 0');
+    return;
+  }
+  pagination.pageSize = Math.min(size, 10000);
+  pagination.current = 1;
+  fetchTemplates();
+}
 
 // Preview state
 const previewVisible = ref(false);
@@ -316,15 +347,7 @@ const rowSelection = computed(() => ({
   },
 }));
 
-const tablePagination = computed(() => ({
-  current: pagination.current,
-  pageSize: pagination.pageSize,
-  total: pagination.total,
-  showSizeChanger: true,
-  showTotal: (total, range) =>
-    `显示第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-  pageSizeOptions: ['10', '20', '50', '100'],
-}));
+const tablePagination = false;
 
 const moduleOptions = computed(() => modules.value.length ? modules.value : FALLBACK_MODULES);
 
@@ -496,6 +519,16 @@ function handleReset() {
 function handleTableChange(pag) {
   pagination.current = pag.current;
   pagination.pageSize = pag.pageSize;
+  fetchData();
+}
+function onPageChange(page, pageSize) {
+  pagination.current = page;
+  pagination.pageSize = pageSize;
+  fetchData();
+}
+function onPageSizeChange(current, size) {
+  pagination.pageSize = size;
+  pagination.current = 1;
   fetchData();
 }
 
@@ -788,4 +821,33 @@ onMounted(() => {
 }
 .checkbox-label { font-size: 12px; }
 .print-dialog { display: flex; flex-direction: column; }
+.page-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+  flex-wrap: wrap;
+}
+.page-total {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+.page-divider {
+  color: #e0e0e0;
+  font-size: 14px;
+}
+.page-label {
+  font-size: 13px;
+  color: #888;
+}
+.page-suffix {
+  font-size: 13px;
+  color: #bbb;
+}
 </style>

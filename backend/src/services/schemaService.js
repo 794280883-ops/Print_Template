@@ -16,6 +16,7 @@ export async function compileSchema(moduleCode) {
     sortNo: Number(r.sort_no || 0),
     searchable: Boolean(r.searchable),
     sortable: Boolean(r.sortable),
+    unique: Boolean(r.is_unique),
     bindableInTemplate: r.bindable_in_template !== 0,
   }));
 
@@ -33,6 +34,7 @@ export async function compileSchema(moduleCode) {
     recordCodeField,
     searchableFields: fields.filter((f) => f.searchable),
     sortableFields: fields.filter((f) => f.sortable),
+    uniqueFields: fields.filter((f) => f.unique),
     bindableFields: fields.filter((f) => f.bindableInTemplate),
   };
 }

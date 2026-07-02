@@ -8,30 +8,27 @@
           :tab="module.name || module.code"
         />
       </a-tabs>
-      <a-form layout="inline">
+      <a-form layout="inline" class="search-form">
         <a-form-item label="业务编码">
           <a-input
             v-model:value="filters.keyword"
             placeholder="输入业务编码，支持逗号或空格分隔批量查询"
             allow-clear
-            style="width:320px;"
+            style="width:220px;"
             @press-enter="handleSearch"
           />
         </a-form-item>
         <a-form-item v-for="f in searchableFields" :key="f.code" :label="f.name">
           <a-input
             v-model:value="fieldFilters[f.code]"
-            :placeholder="'输入' + f.name"
+            :placeholder="'输入' + f.name + '，支持逗号或空格分隔批量查询'"
             allow-clear
-            style="width:160px;"
+            style="width:220px;"
             @press-enter="handleSearch"
           />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" @click="handleSearch">
-            <template #icon><search-outlined /></template>
-            查询
-          </a-button>
+          <a-button type="primary" @click="handleSearch">查询</a-button>
           <a-button style="margin-left:8px;" @click="handleReset">重置</a-button>
         </a-form-item>
       </a-form>
@@ -75,6 +72,25 @@
           </template>
         </template>
       </a-table>
+      <div class="page-bar">
+        <span class="page-total">共 {{ total }} 条</span>
+        <a-pagination
+          v-model:current="filters.page"
+          v-model:pageSize="filters.pageSize"
+          :total="total"
+          :show-size-changer="true"
+          :show-quick-jumper="{ goButton: true }"
+          :page-size-options="['10', '20', '50', '100']"
+          size="small"
+          @change="fetchData"
+          @showSizeChange="onPageSizeChange"
+        />
+        <span class="page-divider">|</span>
+        <span class="page-label">自定义每页</span>
+        <a-input-number v-model:value="customPageSize" :min="1" :max="10000" size="small" style="width:80px" @press-enter="applyCustomPageSize" />
+        <a-button size="small" type="primary" ghost @click="applyCustomPageSize">应用</a-button>
+        <span class="page-suffix">条</span>
+      </div>
     </a-card>
 
     <!-- Edit Modal -->
@@ -199,7 +215,7 @@ import { listBusinessData, deleteBusinessDataBatch, updateBusinessData, createBu
 import { usePermissionStore } from '../../stores/permission.js';
 
 const { hasPermission } = usePermissionStore();
-import { listTemplates, getTemplate, downloadPrintPdf, listFields } from '../../api/templateApi.js';
+import { listTemplates, getTemplate, downloadPrintPdf, listFields, getLastPrintTemplate } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
 import { FIELD_DICT, TYPE_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
 import { getBarcodeBarStyle as getBarcodeBarStyleBase, getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
@@ -227,6 +243,18 @@ const printLoading = ref(false);
 const filters = reactive({ type: 'LOCATION', keyword: '', page: 1, pageSize: 20, sortField: 'locationCode', sortDir: 'ASC' });
 const fieldFilters = reactive({});
 const total = ref(0);
+const customPageSize = ref(null);
+
+function applyCustomPageSize() {
+  const size = Number(customPageSize.value);
+  if (!size || size < 1) {
+    message.warning('每页条数需大于 0');
+    return;
+  }
+  filters.pageSize = Math.min(size, 10000);
+  filters.page = 1;
+  fetchData();
+}
 const modules = ref([]);
 const fieldsByType = ref({});
 
@@ -235,13 +263,7 @@ const rowSelection = computed(() => ({
   onChange: (keys) => { selectedRowKeys.value = keys; },
 }));
 
-const tablePagination = computed(() => ({
-  current: filters.page,
-  pageSize: filters.pageSize,
-  total: total.value,
-  showSizeChanger: true,
-  showTotal: (t) => `共 ${t} 条`,
-}));
+const tablePagination = false;
 
 // Flatten fields into row for dynamic column display
 const displayRows = computed(() => {
@@ -256,10 +278,12 @@ const moduleOptions = computed(() => modules.value.length ? modules.value : FALL
 const currentModule = computed(() => moduleOptions.value.find((item) => item.code === filters.type) || null);
 
 const currentFields = computed(() => {
-  return (fieldsByType.value[filters.type] || FIELD_DICT[filters.type] || []).map((field) => ({
-    ...field,
-    required: !!field.required,
-  }));
+  return (fieldsByType.value[filters.type] || FIELD_DICT[filters.type] || [])
+    .filter((field) => field.enabled !== false)
+    .map((field) => ({
+      ...field,
+      required: !!field.required,
+    }));
 });
 
 const searchableFields = computed(() => {
@@ -341,6 +365,11 @@ function handleTableChange(pag, _filters, sorter) {
     filters.sortField = codeFieldCode.value;
     filters.sortDir = 'ASC';
   }
+  fetchData();
+}
+function onPageSizeChange(current, size) {
+  filters.pageSize = size;
+  filters.page = 1;
   fetchData();
 }
 function handleCreate() {
@@ -431,6 +460,23 @@ async function handleBatchPrint() {
     printTemplates.value = (result.rows || []).filter(t => t.status === 'enabled');
   } catch {
     printTemplates.value = [];
+  }
+
+  // Auto-select template: if only one enabled, select it;
+  // if multiple, select the last one the user printed for this business type.
+  if (printTemplates.value.length === 1) {
+    selectPrintTemplate(printTemplates.value[0]);
+  } else if (printTemplates.value.length > 1) {
+    try {
+      const data = await getLastPrintTemplate(filters.type);
+      const lastId = data?.templateId;
+      const matched = printTemplates.value.find(t => String(t.id) === String(lastId));
+      if (matched) {
+        selectPrintTemplate(matched);
+      }
+    } catch {
+      // no last print record, leave unselected
+    }
   }
 
   printVisible.value = true;
@@ -598,6 +644,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.search-form :deep(.ant-form-item) {
+  margin-bottom: 12px;
+}
 .business-data { display: flex; flex-direction: column; gap: 12px; }
 .filter-card { background: linear-gradient(180deg, #fbfdff 0%, #f6f9fd 100%); }
 
@@ -654,4 +703,33 @@ onMounted(async () => {
 .import-upload-area:hover { border-color: #1677ff; }
 .import-hint { margin-top: 8px; color: #999; font-size: 13px; }
 .import-file-name { margin-top: 8px; font-weight: 600; font-size: 13px; }
+.page-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+  flex-wrap: wrap;
+}
+.page-total {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+.page-divider {
+  color: #e0e0e0;
+  font-size: 14px;
+}
+.page-label {
+  font-size: 13px;
+  color: #888;
+}
+.page-suffix {
+  font-size: 13px;
+  color: #bbb;
+}
 </style>

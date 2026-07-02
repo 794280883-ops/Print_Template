@@ -67,21 +67,25 @@ function getAllowedSortFields(schema = {}) {
   ].filter(Boolean);
 }
 
-export async function createRecord(payload = {}, options = {}) {
+export async function createRecord(payload = {}) {
   const moduleCode = String(payload.bizType || payload.type || "").toUpperCase();
   const schema = await compileSchema(moduleCode);
   const fields = payload.fields || {};
-  const { skipUniqueCheck = false } = options;
 
   const recordCode = String(fields[schema.recordCodeField.code] || "").trim();
   if (!recordCode) throw appError(`${schema.recordCodeField.name}必填`, 40000, 400);
-  if (!skipUniqueCheck && await recordRepository.getByCode(moduleCode, recordCode)) {
-    throw appError(`${schema.recordCodeField.name}「${recordCode}」已存在`, 40001, 409);
-  }
 
   const recordData = {};
   for (const f of schema.fields) {
     recordData[f.code] = String(fields[f.code] ?? "").trim();
+  }
+
+  if (schema.uniqueFields?.length) {
+    const fieldNames = schema.uniqueFields.map((f) => f.name).join(" + ");
+    const fieldValues = schema.uniqueFields.map((f) => recordData[f.code]).join(" / ");
+    if (await recordRepository.existsByUniqueFields(moduleCode, schema.uniqueFields, recordData)) {
+      throw appError(`${fieldNames}组合「${fieldValues}」已存在`, 40001, 409);
+    }
   }
 
   const searchText = schema.searchableFields
@@ -89,14 +93,7 @@ export async function createRecord(payload = {}, options = {}) {
     .filter(Boolean)
     .join(" ");
 
-  try {
-    return await recordRepository.create({ moduleCode, recordCode, recordData, searchText });
-  } catch (error) {
-    if (!skipUniqueCheck && error?.code === "ER_DUP_ENTRY") {
-      throw appError(`${schema.recordCodeField.name}「${recordCode}」已存在`, 40001, 409);
-    }
-    throw error;
-  }
+  return recordRepository.create({ moduleCode, recordCode, recordData, searchText });
 }
 
 export async function updateRecord(bizType, bizCode, payload = {}) {
@@ -119,6 +116,14 @@ export async function updateRecord(bizType, bizCode, payload = {}) {
     recordData[f.code] = f.code === schema.recordCodeField.code
       ? recordCode
       : String(fields[f.code] ?? "").trim();
+  }
+
+  if (schema.uniqueFields?.length) {
+    const fieldNames = schema.uniqueFields.map((f) => f.name).join(" + ");
+    const fieldValues = schema.uniqueFields.map((f) => recordData[f.code]).join(" / ");
+    if (await recordRepository.existsByUniqueFields(moduleCode, schema.uniqueFields, recordData, recordCode)) {
+      throw appError(`${fieldNames}组合「${fieldValues}」已存在`, 40001, 409);
+    }
   }
 
   const searchText = schema.searchableFields
@@ -197,7 +202,7 @@ export async function importRecords(bizType, fileBuffer) {
 
   for (const candidate of candidates) {
     try {
-      await createRecord({ bizType, fields: candidate.fields }, { skipUniqueCheck: true });
+      await createRecord({ bizType, fields: candidate.fields });
       results.success++;
     } catch (err) {
       results.errors.push({ row: candidate.row, message: err.message || "未知错误" });

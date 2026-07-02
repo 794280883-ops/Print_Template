@@ -1,4 +1,5 @@
 import * as printService from "../services/printService.js";
+import * as printRepository from "../repositories/printRepository.js";
 import { appError } from "../utils/response.js";
 
 /**
@@ -24,7 +25,7 @@ export async function downloadPdf(req, res) {
     businessType: payload.businessType,
     businessNo: payload.businessNo,
     warehouseCode: payload.warehouseCode,
-    operator: payload.operator,
+    operator: req.user?.username || "Admin",
   });
 
   const now = new Date();
@@ -39,4 +40,16 @@ export async function downloadPdf(req, res) {
   res.setHeader("X-Print-Log-Id", String(logEntry.id));
 
   res.end(pdfBuffer);
+}
+
+/**
+ * Get the last template the current user printed for a business type.
+ * GET /api/v1/print/last-template?businessType=LOCATION
+ */
+export async function getLastTemplate(req, res) {
+  const businessType = String(req.query.businessType || "").toUpperCase();
+  if (!businessType) throw appError("缺少业务类型", 40000, 400);
+  const operator = req.user?.username || "Admin";
+  const templateId = await printRepository.getLastPrintTemplate(operator, businessType);
+  res.json({ code: 0, message: "success", data: { templateId } });
 }

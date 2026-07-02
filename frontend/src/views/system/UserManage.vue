@@ -6,7 +6,7 @@
           <plus-outlined /> 新增用户
         </a-button>
       </a-space>
-      <a-table :columns="columns" :data-source="users" :loading="loading" :pagination="{ showSizeChanger: true, showTotal: t => `共 ${t} 条` }" row-key="id" size="middle" :scroll="{ x: 'max-content' }" @resizeColumn="onResizeColumn">
+      <a-table :columns="columns" :data-source="users" :loading="loading" :pagination="false" row-key="id" size="middle" :scroll="{ x: 'max-content' }" @resizeColumn="onResizeColumn">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'roles'">
             <a-space wrap size="small"><a-tag v-for="r in (record.roleNames || [])" :key="r" color="blue">{{ r }}</a-tag></a-space>
@@ -26,6 +26,23 @@
           </template>
         </template>
       </a-table>
+      <div class="page-bar">
+        <span class="page-total">共 {{ users.length }} 条</span>
+        <a-pagination
+          v-model:current="pageState.current"
+          v-model:pageSize="pageState.pageSize"
+          :total="users.length"
+          :show-size-changer="true"
+          :show-quick-jumper="{ goButton: true }"
+          :page-size-options="['10', '20', '50', '100']"
+          size="small"
+        />
+        <span class="page-divider">|</span>
+        <span class="page-label">自定义每页</span>
+        <a-input-number v-model:value="customPageSize" :min="1" :max="10000" size="small" style="width:80px" @press-enter="applyCustomPageSize" />
+        <a-button size="small" type="primary" ghost @click="applyCustomPageSize">应用</a-button>
+        <span class="page-suffix">条</span>
+      </div>
     </a-card>
 
     <a-modal v-model:open="pwdModalVisible" title="修改密码" cancel-text="取消" ok-text="确认" @ok="handleChangePwd" @cancel="pwdModalVisible = false" :confirm-loading="saving">
@@ -73,6 +90,19 @@ const pwdForm = reactive({ userId: null, password: '' });
 const modalVisible = ref(false);
 const editingId = ref(null);
 const form = reactive({ username: '', nickname: '', password: '', roleIds: [] });
+const pageState = reactive({ current: 1, pageSize: 10 });
+const customPageSize = ref(null);
+
+function applyCustomPageSize() {
+  const size = Number(customPageSize.value);
+  if (!size || size < 1) return;
+  pageState.pageSize = Math.min(size, 10000);
+  pageState.current = 1;
+}
+function onPageChange(pag) {
+  pageState.current = pag.current;
+  pageState.pageSize = pag.pageSize;
+}
 
 async function loadData() {
   loading.value = true;
@@ -143,3 +173,35 @@ async function handleDelete(record) {
 
 onMounted(loadData);
 </script>
+
+<style scoped>
+.page-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+  flex-wrap: wrap;
+}
+.page-total {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+.page-divider {
+  color: #e0e0e0;
+  font-size: 14px;
+}
+.page-label {
+  font-size: 13px;
+  color: #888;
+}
+.page-suffix {
+  font-size: 13px;
+  color: #bbb;
+}
+</style>

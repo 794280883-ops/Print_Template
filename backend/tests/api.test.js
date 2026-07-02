@@ -489,7 +489,7 @@ test("business data import template returns headers without comment", async () =
   }
 });
 
-test("business data primary field is unique and cannot be changed", async () => {
+test("business data primary field allows duplicates but cannot be changed", async () => {
   const server = await listen(createApp());
   const recordCode = `UNIQUE_${Date.now().toString(36).toUpperCase()}`;
   try {
@@ -506,9 +506,7 @@ test("business data primary field is unique and cannot be changed", async () => 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bizType: "LOCATION", fields: { locationCode: recordCode } }),
     });
-    const duplicateBody = await response.json();
-    assert.equal(response.status, 409);
-    assert.match(duplicateBody.message, /已存在/);
+    assert.equal(response.status, 200);
 
     response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/LOCATION/${recordCode}`, {
       method: "PUT",

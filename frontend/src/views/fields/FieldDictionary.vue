@@ -49,6 +49,11 @@
               {{ record.searchable ? '是' : '否' }}
             </a-tag>
           </template>
+          <template v-else-if="column.key === 'isUnique'">
+            <a-tag :color="record.isUnique ? 'purple' : 'default'">
+              {{ record.isUnique ? '是' : '否' }}
+            </a-tag>
+          </template>
           <template v-else-if="column.key === 'status'">
             <a-tag :color="record.enabled !== false ? 'green' : 'default'">
               {{ record.enabled !== false ? '启用' : '停用' }}
@@ -135,8 +140,10 @@
             <a-checkbox v-model:checked="fieldForm.required">必填</a-checkbox>
             <a-checkbox v-model:checked="fieldForm.searchable" :disabled="isCodeField">启用查询</a-checkbox>
             <a-checkbox v-model:checked="fieldForm.sortable">支持排序</a-checkbox>
+            <a-checkbox v-model:checked="fieldForm.isUnique">校验唯一性</a-checkbox>
           </a-space>
           <div v-if="isCodeField" style="font-size:12px;color:#999;margin-top:4px">业务编码字段默认启用查询，不可取消</div>
+          <div v-if="fieldForm.isUnique" style="font-size:12px;color:#999;margin-top:4px">勾选后新增/编辑业务数据时，该字段与其他唯一性字段组合校验（AND）</div>
         </a-form-item>
         <a-form-item label="示例值">
           <a-input v-model:value="fieldForm.example" />
@@ -192,6 +199,8 @@ const columns = ref([
   { title: '类型', dataIndex: 'type', key: 'type', resizable: true, width: 70 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 70 },
   { title: '可查询', dataIndex: 'searchable', key: 'searchable', width: 70 },
+  { title: '排序', dataIndex: 'sortNo', key: 'sortNo', width: 60 },
+  { title: '唯一校验', dataIndex: 'isUnique', key: 'isUnique', width: 80 },
   { title: '状态', key: 'status', width: 70 },
   { title: '示例值', key: 'example', resizable: true, width: 180 },
   { title: '说明', dataIndex: 'desc', key: 'desc', resizable: true, width: 200, ellipsis: true },
@@ -216,10 +225,13 @@ const isCodeField = computed(() => {
 const canDeleteActiveModule = computed(() => !!activeType.value && !builtInCodes.has(activeType.value));
 
 const fields = computed(() => {
-  return (fieldMap.value[activeType.value] || FIELD_DICT[activeType.value] || []).map(f => ({
-    ...f,
-    required: !!f.required,
-  }));
+  return (fieldMap.value[activeType.value] || FIELD_DICT[activeType.value] || [])
+    .map(f => ({
+      ...f,
+      required: !!f.required,
+    }))
+    .slice()
+    .sort((a, b) => (Number(a.sortNo || 0) - Number(b.sortNo || 0)));
 });
 
 async function fetchModules() {
@@ -269,6 +281,7 @@ function emptyFieldForm() {
     required: false,
     searchable: true,
     sortable: false,
+    isUnique: false,
     example: '',
     desc: '',
     sortNo: null,
@@ -312,6 +325,7 @@ function openEditFieldModal(record) {
     required: !!record.required,
     searchable: record.searchable !== false,
     sortable: !!record.sortable,
+    isUnique: !!record.isUnique,
     example: record.example || '',
     desc: record.desc || '',
     sortNo: Number(record.sortNo || 0),
@@ -404,6 +418,7 @@ async function handleSaveField() {
       required: !!form.required,
       searchable: isCodeField.value ? true : !!form.searchable,
       sortable: !!form.sortable,
+      isUnique: !!form.isUnique,
       example: form.example.trim(),
       desc: form.desc.trim(),
       sortNo: Number(form.sortNo || 0),

@@ -25,8 +25,19 @@ export async function search(moduleCode, { keyword, fieldFilters = {}, page = 1,
 
   for (const [fieldCode, value] of Object.entries(fieldFilters)) {
     if (!/^[A-Za-z0-9_]+$/.test(fieldCode)) continue;
-    where += ` AND JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${fieldCode}"')) = ?`;
-    params.push(value);
+    const codes = String(value || "")
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (codes.length === 0) continue;
+    if (codes.length === 1) {
+      where += ` AND JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${fieldCode}"')) = ?`;
+      params.push(codes[0]);
+    } else {
+      const placeholders = codes.map(() => "?").join(", ");
+      where += ` AND JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${fieldCode}"')) IN (${placeholders})`;
+      params.push(...codes);
+    }
   }
 
   const [[{ total }]] = await pool.query(
@@ -65,6 +76,25 @@ export async function getByCode(moduleCode, recordCode) {
     [moduleCode, recordCode],
   );
   return rows[0] ? toDto(rows[0]) : null;
+}
+
+export async function existsByUniqueFields(moduleCode, uniqueFields, recordData, excludeRecordCode = null) {
+  if (!uniqueFields || !uniqueFields.length) return false;
+  let where = "WHERE module_code = ?";
+  const params = [moduleCode];
+  for (const field of uniqueFields) {
+    where += ` AND JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${field.code}"')) = ?`;
+    params.push(String(recordData[field.code] ?? ""));
+  }
+  if (excludeRecordCode) {
+    where += " AND record_code <> ?";
+    params.push(excludeRecordCode);
+  }
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM business_record ${where}`,
+    params,
+  );
+  return total > 0;
 }
 
 export async function create({ moduleCode, recordCode, recordData, searchText }) {
