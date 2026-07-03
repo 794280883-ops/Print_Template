@@ -131,6 +131,7 @@ wms-print-template-center/
 
 ## 文档
 
+- [文档导航](docs/README.md)
 - [功能清单](docs/功能清单.md)
 - [变更日志](docs/变更日志.md)
 - [本地开发指南](docs/本地开发指南.md)

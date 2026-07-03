@@ -1,66 +1,87 @@
----
-title: 权限系统测试方案
-category: 参考规范
-audience: developer
-last_updated: 2026-07-03
-tags: [testing, permissions, RBAC, unit-test, node-test]
----
+import assert from "node:assert/strict";
+import test from "node:test";
 
-# 权限系统测试方案
+// ============================================================
+// 测试辅助工具
+// ============================================================
 
-> **何时查看**：修改权限逻辑后验证时 / 新增权限码后补充测试时 / 排查权限 bug 时 / 了解测试覆盖范围时
+/**
+ * 创建模拟权限 store，不依赖 Pinia 和 Vue 运行时。
+ * 与真实的 usePermissionStore 保持本测试需要的接口一致。
+ */
+function createPermissionStore({ permissions = [], user = null, token = "" } = {}) {
+  let _permissions = [...permissions];
+  let _user = user;
+  let _token = token;
 
-## 测试环境
-- 前端: http://127.0.0.1:5173
-- 账号: admin/123456 (管理员), business/123456 (业务)
-> 完整预置账号信息见 [功能清单](功能清单.md#5-权限说明)
+  return {
+    get permissions() { return _permissions; },
+    get user() { return _user; },
+    get token() { return _token; },
 
-## 测试文件
+    hasPermission(code) {
+      if (!code) return true;
+      return _permissions.includes(code);
+    },
 
-测试代码位于 `frontend/tests/permission.test.js`，运行方式：
+    setPermissions(list) {
+      _permissions = [...list];
+    },
 
-```bash
-cd frontend
-node --test tests/permission.test.js
-```
+    logout() {
+      _permissions = [];
+      _user = null;
+      _token = "";
+    },
+  };
+}
 
-测试使用 `node:test` + `node:assert/strict`（与项目现有测试风格一致），通过轻量 mock 验证权限判断逻辑，不依赖浏览器或 DOM。
+/**
+ * 菜单树过滤函数（模拟权限菜单过滤逻辑，供 TC9 使用）。
+ * 真实登录菜单树由后端 getMenuTree 根据 menu_id 构建。
+ */
+function buildVisibleMenuTree(menus, permissions) {
+  return menus
+    .map(menu => {
+      if (menu.type === "button") return null;
+      const children = menu.children
+        ? menu.children.filter(c => {
+            if (c.type === "button") {
+              return permissions.includes(c.permission_code);
+            }
+            return !c.permission_code || permissions.includes(c.permission_code);
+          })
+        : [];
+      if (children.length === 0 && menu.type === "directory") return null;
+      return { ...menu, children };
+    })
+    .filter(Boolean);
+}
 
-### 覆盖边界
+/**
+ * 路由守卫逻辑（模拟 router/index.js 中的权限判断分支，供 TC10 使用）。
+ */
+function checkRouteAccess(to, store) {
+  if (!to.meta?.permission) return { allowed: true };
+  if (!store.hasPermission(to.meta.permission)) {
+    return { redirect: "/403" };
+  }
+  return { allowed: true };
+}
 
-当前自动化测试覆盖：
+// ============================================================
+// 测试用例
+// ============================================================
 
-- `hasPermission` 的空权限码、持有权限、未持有权限判断
-- 管理员、业务角色的权限码范围
-- 菜单树过滤和路由守卫的核心判断分支（使用 mock 数据）
-- 登录返回结构、权限变更、退出登录后的 session 状态变化（使用 mock 数据）
-
-当前自动化测试不覆盖：
-
-- 真实登录接口、真实数据库角色菜单数据
-- 侧边栏菜单渲染、按钮显隐、权限弹窗等 DOM/Ant Design 组件行为
-- 管理员修改角色权限后，另一个用户重新登录的完整 E2E 流程
-
-如需验证这些 UI 和链路场景，继续使用浏览器手工验证或新增 Playwright E2E 测试。
-
----
-
-## 测试用例
-
-### TC1: 空权限码 — 无需权限即可访问
-
-```js
+// TC1: 空权限码 — 无需权限即可访问
 test("hasPermission returns true for empty/undefined permission code", () => {
   const store = createPermissionStore({ permissions: ["template:view"] });
   assert.equal(store.hasPermission(""), true);
   assert.equal(store.hasPermission(null), true);
   assert.equal(store.hasPermission(undefined), true);
 });
-```
 
-### TC2: 持有权限 — 返回 true
-
-```js
+// TC2: 持有权限 — 返回 true
 test("hasPermission returns true when user holds the permission", () => {
   const store = createPermissionStore({
     permissions: ["template:view", "business:view", "business:print"],
@@ -69,11 +90,8 @@ test("hasPermission returns true when user holds the permission", () => {
   assert.equal(store.hasPermission("business:view"), true);
   assert.equal(store.hasPermission("business:print"), true);
 });
-```
 
-### TC3: 未持有权限 — 返回 false
-
-```js
+// TC3: 未持有权限 — 返回 false
 test("hasPermission returns false when user does not hold the permission", () => {
   const store = createPermissionStore({
     permissions: ["template:view"],
@@ -81,11 +99,8 @@ test("hasPermission returns false when user does not hold the permission", () =>
   assert.equal(store.hasPermission("system:user:view"), false);
   assert.equal(store.hasPermission("business:delete"), false);
 });
-```
 
-### TC4: admin 全量权限
-
-```js
+// TC4: admin 全量权限
 test("admin role should have all system permissions", () => {
   const adminPermissions = [
     "template:view", "template:create", "template:edit",
@@ -107,11 +122,8 @@ test("admin role should have all system permissions", () => {
     assert.equal(store.hasPermission(perm), true, `admin should have ${perm}`);
   }
 });
-```
 
-### TC5: business 角色权限范围
-
-```js
+// TC5: business 角色权限范围
 test("business role should have template/field/business permissions only", () => {
   const businessPermissions = [
     "template:view",
@@ -133,11 +145,8 @@ test("business role should have template/field/business permissions only", () =>
   assert.equal(store.hasPermission("system:role:view"), false);
   assert.equal(store.hasPermission("system:menu:view"), false);
 });
-```
 
-### TC6: 业务数据页面 — business 可见按钮
-
-```js
+// TC6: 业务数据页面 — business 可见按钮
 test("business role sees correct buttons on business data page", () => {
   const store = createPermissionStore({
     permissions: ["business:view", "business:create", "business:edit",
@@ -151,11 +160,8 @@ test("business role sees correct buttons on business data page", () => {
   // business 没有字段管理删除权限
   assert.equal(store.hasPermission("field:delete"), false);
 });
-```
 
-### TC7: 字段字典页面 — business 可见按钮
-
-```js
+// TC7: 字段字典页面 — business 可见按钮
 test("business role sees edit/disable but not delete on fields page", () => {
   const store = createPermissionStore({
     permissions: ["field:view", "field:edit", "field:enable", "field:disable"],
@@ -165,11 +171,8 @@ test("business role sees edit/disable but not delete on fields page", () => {
   assert.equal(store.hasPermission("field:delete"), false);
   assert.equal(store.hasPermission("field:module:delete"), false);
 });
-```
 
-### TC8: 系统管理 — business 无权访问
-
-```js
+// TC8: 系统管理 — business 无权访问
 test("business role cannot access any system management pages", () => {
   const store = createPermissionStore({
     permissions: ["template:view", "business:view"],
@@ -178,11 +181,8 @@ test("business role cannot access any system management pages", () => {
   assert.equal(store.hasPermission("system:role:view"), false);
   assert.equal(store.hasPermission("system:menu:view"), false);
 });
-```
 
-### TC9: 菜单树构建 — 空目录不显示
-
-```js
+// TC9: 菜单树构建 — 空目录不显示
 test("buildMenuTree filters out empty directories", () => {
   // 模拟: 角色只有 template:view，不应出现"字段与数据""系统管理"目录
   const permissions = ["template:view"];
@@ -210,11 +210,8 @@ test("buildMenuTree filters out empty directories", () => {
   assert.equal(pageNodes.length, 1);
   assert.equal(pageNodes[0].name, "模板列表");
 });
-```
 
-### TC9 补充: 多个目录都有可见内容时全部保留
-
-```js
+// TC9 补充: 多个目录都有可见内容时全部保留
 test("buildMenuTree keeps all directories with visible children", () => {
   const permissions = ["template:view", "business:view"];
   const allMenus = [
@@ -235,18 +232,15 @@ test("buildMenuTree keeps all directories with visible children", () => {
   assert.equal(tree.length, 2);
   assert.equal(tree[0].name, "模板管理");
   assert.equal(tree[1].name, "字段与数据");
+  // "字段与数据"目录中只保留了 business:view 的页面
   assert.equal(tree[1].children.length, 1);
   assert.equal(tree[1].children[0].name, "业务数据");
 });
-```
 
-### TC10: 路由守卫 — 无权限页面跳转 403
-
-```js
+// TC10: 路由守卫 — 无权限页面跳转 403
 test("route guard redirects to /403 when user lacks route permission", async () => {
   const store = createPermissionStore({ permissions: ["template:view"] });
 
-  // 模拟路由守卫逻辑
   const result = checkRouteAccess({
     path: "/system/users",
     meta: { permission: "system:user:view" },
@@ -278,13 +272,9 @@ test("route guard allows access when route has no permission requirement", async
 
   assert.equal(result.allowed, true);
 });
-```
 
-### TC11: 登录成功 — 返回权限码和菜单树
-
-```js
+// TC11: 登录成功 — 返回权限码和菜单树
 test("login returns token, user, permissions, and menu tree", async () => {
-  // 模拟 authService.login 的返回结构
   const loginResult = {
     token: "eyJ...",
     user: { id: 1, username: "admin", nickname: "管理员" },
@@ -304,11 +294,8 @@ test("login returns token, user, permissions, and menu tree", async () => {
   assert.equal(loginResult.permissions.includes("template:view"), true);
   assert.equal(loginResult.menus.length > 0, true);
 });
-```
 
-### TC12: 权限变更后需重新登录
-
-```js
+// TC12: 权限变更后需重新登录
 test("permission store reflects current session only, not stale data", () => {
   const store = createPermissionStore({ permissions: ["template:view"] });
   assert.equal(store.hasPermission("business:view"), false);
@@ -332,107 +319,11 @@ test("logout clears all permissions", () => {
   assert.equal(store.token, "");
   assert.equal(store.hasPermission("template:view"), false);
 });
-```
 
-### TC13: 空权限数组 — 任意非空权限均不可访问
-
-```js
+// 补充: 空权限数组场景
 test("store with empty permissions array returns false for any permission", () => {
   const store = createPermissionStore({ permissions: [] });
   assert.equal(store.hasPermission("template:view"), false);
   assert.equal(store.hasPermission("business:view"), false);
-  assert.equal(store.hasPermission(""), true);
+  assert.equal(store.hasPermission(""), true); // 空权限码仍返回 true
 });
-```
-
----
-
-## 测试辅助工具
-
-为便于测试，`permission.test.js` 中定义了一个轻量的 `createPermissionStore` 工厂函数：
-
-```js
-/**
- * 创建模拟权限 store，不依赖 Pinia 和 Vue 运行时。
- * 与真实的 usePermissionStore 保持本测试需要的接口一致。
- */
-function createPermissionStore({ permissions = [], user = null, token = "" } = {}) {
-  let _permissions = [...permissions];
-  let _user = user;
-  let _token = token;
-
-  return {
-    get permissions() { return _permissions; },
-    get user() { return _user; },
-    get token() { return _token; },
-
-    hasPermission(code) {
-      if (!code) return true;
-      return _permissions.includes(code);
-    },
-
-    setPermissions(list) {
-      _permissions = [...list];
-    },
-
-    logout() {
-      _permissions = [];
-      _user = null;
-      _token = "";
-    },
-  };
-}
-```
-
-菜单树过滤函数（模拟权限菜单过滤逻辑，供 TC9 使用）：
-
-```js
-function buildVisibleMenuTree(menus, permissions) {
-  return menus
-    .map(menu => {
-      if (menu.type === "button") return null;
-      const children = menu.children
-        ? menu.children.filter(c => {
-            if (c.type === "button") {
-              return permissions.includes(c.permission_code);
-            }
-            return !c.permission_code || permissions.includes(c.permission_code);
-          })
-        : [];
-      if (children.length === 0 && menu.type === "directory") return null;
-      return { ...menu, children };
-    })
-    .filter(Boolean);
-}
-```
-
-路由守卫逻辑（提取自 `router/index.js`，供 TC10 使用）：
-
-```js
-function checkRouteAccess(to, store) {
-  if (!to.meta?.permission) return { allowed: true };
-  if (!store.hasPermission(to.meta.permission)) {
-    return { redirect: "/403" };
-  }
-  return { allowed: true };
-}
-```
-
----
-
-## 与原有非标准 DSL 的对照
-
-| 原 TC | 原写法 | 新 TC | 新写法 |
-|-------|--------|-------|--------|
-| TC1 admin 登录 | `goto /login → fill → click → eval` | TC4 + TC11 | 权限码列表断言 + 登录返回结构断言 |
-| TC2 business 登录 | `goto /login → fill → click → eval` | TC5 | 权限码范围断言 |
-| TC3 字段字典按钮 | `eval querySelectorAll → 按钮文本` | TC7 | 权限码判断断言，不验证 DOM 按钮渲染 |
-| TC4 业务数据按钮 | `eval querySelectorAll → 按钮文本` | TC6 | 权限码判断断言，不验证 DOM 按钮渲染 |
-| TC5 无权系统管理 | `goto /system/users → eval href` | TC8 + TC10 | hasPermission + 路由守卫断言 |
-| TC6 admin 全部权限 | `eval querySelectorAll → ≥1` | TC4 | 全量权限码遍历断言 |
-| TC7 权限卡片 | `eval querySelectorAll → checkbox` | — | 属于 E2E 测试，不在单元测试范围 |
-| TC8 空目录隐藏 | `eval querySelectorAll → 1` | TC9 | mock 菜单树过滤断言，不验证真实侧边栏 |
-| TC9 菜单管理树 | `eval querySelectorAll → ≥30` | — | 属于 E2E 测试，不在单元测试范围 |
-| TC10 权限即时生效 | `goto → eval href → /403` | TC12 | session 权限变更/清空断言，不验证真实多用户会话 |
-
-> **注意**：TC7（权限卡片 UI）和 TC9（菜单管理树节点数）涉及 DOM 渲染和 Ant Design 组件交互，属于 E2E 测试范畴。如需覆盖这些场景，建议使用 Playwright 编写端到端测试，而非在 `node:test` 中模拟。
