@@ -1,4 +1,5 @@
 import * as fieldRepository from "../repositories/fieldRepository.js";
+import * as businessModuleRepository from "../repositories/businessModuleRepository.js";
 import { appError } from "../utils/response.js";
 
 export async function listFields(moduleCode) {
@@ -27,6 +28,7 @@ export async function updateField(moduleCode, fieldCode, payload = {}) {
 }
 
 export async function disableField(moduleCode, fieldCode) {
+  await assertNotRecordCodeField(moduleCode, fieldCode);
   const references = await fieldRepository.countFieldReferences(moduleCode, fieldCode);
   if (references > 0) throw appError("字段已被模板引用，不能停用", 40002, 409, { references });
   const affectedRows = await fieldRepository.disableField(moduleCode, fieldCode);
@@ -41,6 +43,7 @@ export async function enableField(moduleCode, fieldCode) {
 }
 
 export async function deleteField(moduleCode, fieldCode) {
+  await assertNotRecordCodeField(moduleCode, fieldCode);
   const field = await fieldRepository.getField(moduleCode, fieldCode);
   if (!field) throw appError("字段不存在", 40400, 404);
   if (field.is_required) throw appError("必填字段不允许删除，请先取消必填或停用该字段", 40002, 409);
@@ -49,6 +52,13 @@ export async function deleteField(moduleCode, fieldCode) {
   const affectedRows = await fieldRepository.deleteField(moduleCode, fieldCode);
   if (!affectedRows) throw appError("字段不存在", 40400, 404);
   return { deleted: true };
+}
+
+async function assertNotRecordCodeField(moduleCode, fieldCode) {
+  const mod = await businessModuleRepository.getModule(moduleCode);
+  if (mod && mod.record_code_field === fieldCode) {
+    throw appError("主编码字段不允许停用或删除", 40002, 409);
+  }
 }
 
 export function normalizeField(payload = {}, { requireCode } = {}) {

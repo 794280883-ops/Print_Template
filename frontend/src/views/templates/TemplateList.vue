@@ -142,7 +142,7 @@
             <div v-for="el in previewTemplate.elements" :key="el.id"
               class="template-el" :class="[`el-${el.type}`]"
               :style="getPreviewElementStyle(el)">
-              <div v-if="el.type === 'text'" class="el-content">{{ getPreviewText(el) }}</div>
+              <div v-if="el.type === 'text'" class="el-content">{{ getTemplatePreviewText(el) }}</div>
               <div v-else-if="el.type === 'qrcode'" class="qr"></div>
               <div v-else-if="el.type === 'barcode'" class="barcode-box">
                 <div class="barcode" :style="getBarcodeBarStyle(el, previewTemplate)"></div>
@@ -165,73 +165,6 @@
             <div><b>尺寸：</b>{{ previewTemplate.size.width }} × {{ previewTemplate.size.height }}mm</div>
             <div><b>状态：</b><a-tag :color="previewTemplate.status === 'enabled' ? 'green' : 'red'">{{ STATUS_LABEL[previewTemplate.status] || previewTemplate.status }}</a-tag></div>
           </div>
-        </div>
-      </div>
-    </a-modal>
-
-    <!-- Print Modal -->
-    <a-modal v-model:open="printVisible" title="模板打印" width="800px" :footer="null">
-      <div v-if="printState" class="print-dialog">
-        <div style="display:flex;gap:20px">
-          <!-- Left: print settings -->
-          <div style="width:260px;flex-shrink:0">
-            <a-form layout="vertical" size="small">
-              <a-form-item label="打印份数">
-                <a-input-number v-model:value="printState.copies" :min="1" :max="99" style="width:100%" />
-              </a-form-item>
-              <a-form-item label="打印方式">
-                <a-radio-group v-model:value="printState.printAll">
-                  <a-radio :value="true">全部业务数据</a-radio>
-                  <a-radio :value="false">选择业务数据</a-radio>
-                </a-radio-group>
-              </a-form-item>
-              <a-form-item v-if="printState.businessList.length" label="数据预览">
-                <div style="max-height:200px;overflow-y:auto">
-                  <div v-for="(row, i) in printState.businessList" :key="i"
-                    style="padding:4px 8px;margin:2px 0;border:1px solid #f0f0f0;border-radius:4px;font-size:12px;
-                           display:flex;align-items:center;gap:6px">
-                    <a-checkbox v-if="!printState.printAll"
-                      :checked="printState.selectedRowIndices.includes(i)"
-                      @change="(e) => {
-                        const idx = printState.selectedRowIndices.indexOf(i);
-                        if (e.target.checked && idx === -1) printState.selectedRowIndices.push(i);
-                        if (!e.target.checked && idx !== -1) printState.selectedRowIndices.splice(idx, 1);
-                      }" />
-                    <template v-for="(v, k) in row.fields" :key="k">
-                      <span style="color:#999">{{ k }}:</span> {{ v }}&nbsp;
-                    </template>
-                  </div>
-                </div>
-              </a-form-item>
-            </a-form>
-          </div>
-          <!-- Right: print preview -->
-          <div style="flex:1">
-            <div class="print-preview" style="background:#eef2f7;padding:12px;border-radius:8px;min-height:200px">
-              <div class="label-canvas" :style="printCanvasStyle">
-                <div v-for="el in printState.previewElements" :key="el.id"
-                  class="template-el" :class="[`el-${el.type}`]"
-                  :style="getPrintPreviewStyle(el)">
-                  <div v-if="el.type === 'text'" class="el-content">{{ getPreviewText(el) }}</div>
-                  <div v-else-if="el.type === 'qrcode'" class="qr"></div>
-                  <div v-else-if="el.type === 'barcode'" class="barcode-box">
-                    <div class="barcode" :style="getBarcodeBarStyle(el, printState.template)"></div>
-                    <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, printState.template)">
-                      {{ getBarcodeHumanText(el, getPrintPreviewData()) }}
-                    </div>
-                  </div>
-                  <div v-else-if="el.type === 'checkbox'" class="checkbox-content">
-                    <span class="checkbox-mark" :class="{ checked: el.checked }">{{ el.checked ? '✓' : '' }}</span>
-                    <span v-if="el.text" class="checkbox-label">{{ el.text }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div style="text-align:right;margin-top:16px">
-          <a-button @click="printVisible = false" style="margin-right:8px">取消</a-button>
-          <a-button type="primary" :loading="printState.printing" @click="doPrint">确认打印</a-button>
         </div>
       </div>
     </a-modal>
@@ -269,24 +202,27 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
   listTemplates,
   getTemplate,
   createTemplate,
-  enableTemplate,
-  disableTemplate,
   deleteTemplate as apiDeleteTemplate,
   copyTemplate,
-  downloadPrintPdf,
   batchUpdateTemplateStatus,
 } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
-import { searchBusinessData } from '../../api/businessDataApi.js';
-import { TYPE_LABEL, STATUS_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
-import { getBarcodeBarStyle as getBarcodeBarStyleBase, getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
+import { TYPE_LABEL, STATUS_LABEL, FALLBACK_MODULES } from '../../data/constants.js';
+import { getBarcodeHumanText, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
+import {
+  getTemplatePreviewBarcodeBarStyle,
+  getTemplatePreviewBarcodeHumanTextStyle,
+  getTemplatePreviewCanvasStyle,
+  getTemplatePreviewElementStyle,
+  getTemplatePreviewText,
+} from '../../services/templatePreviewStyleService.js';
 
 const router = useRouter();
 
@@ -334,10 +270,6 @@ const createForm = reactive({
   height: 40,
   remark: '',
 });
-
-// Print state
-const printVisible = ref(false);
-const printState = ref(null);
 
 // -- Computed --
 const rowSelection = computed(() => ({
@@ -388,82 +320,19 @@ function onColumnResize(width, col) {
 }
 
 const previewCanvasStyle = computed(() => {
-  if (!previewTemplate.value) return {};
-  const tpl = previewTemplate.value;
-  const z = Math.min(1.4, 340 / (tpl.size.width * PX_PER_MM));
-  return { width: `${tpl.size.width * PX_PER_MM * z}px`, height: `${tpl.size.height * PX_PER_MM * z}px` };
-});
-
-const printCanvasStyle = computed(() => {
-  if (!printState.value) return {};
-  const tpl = printState.value.template;
-  const z = Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM));
-  return { width: `${tpl.size.width * PX_PER_MM * z}px`, height: `${tpl.size.height * PX_PER_MM * z}px` };
+  return getTemplatePreviewCanvasStyle(previewTemplate.value, { maxScale: 1.4, maxWidth: 340 });
 });
 
 function getPreviewElementStyle(el) {
-  const tpl = previewTemplate.value;
-  if (!tpl) return {};
-  const z = Math.min(1.4, 340 / (tpl.size.width * PX_PER_MM));
-  return {
-    left: `${el.x * PX_PER_MM * z}px`,
-    top: `${el.y * PX_PER_MM * z}px`,
-    width: `${el.width * PX_PER_MM * z}px`,
-    height: `${el.height * PX_PER_MM * z}px`,
-    zIndex: el.zIndex || 1,
-    fontSize: `${(el.fontSize || 12) * z}px`,
-    fontWeight: el.bold ? 700 : 400,
-    color: el.color || '#111827',
-    background: el.type === 'line' ? (el.color || '#111827') : (el.backgroundColor || 'transparent'),
-    transform: `rotate(${el.rotate || 0}deg)`,
-  };
-}
-
-function getPrintPreviewStyle(el) {
-  if (!printState.value) return {};
-  const tpl = printState.value.template;
-  const z = Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM));
-  return {
-    left: `${el.x * PX_PER_MM * z}px`,
-    top: `${el.y * PX_PER_MM * z}px`,
-    width: `${el.width * PX_PER_MM * z}px`,
-    height: `${el.height * PX_PER_MM * z}px`,
-    zIndex: el.zIndex || 1,
-    fontSize: `${(el.fontSize || 12) * z}px`,
-    fontWeight: el.bold ? 700 : 400,
-    color: el.color || '#111827',
-    background: el.type === 'line' ? (el.color || '#111827') : (el.backgroundColor || 'transparent'),
-    transform: `rotate(${el.rotate || 0}deg)`,
-  };
-}
-
-function getPreviewText(el) {
-  if (el.type !== 'text') return '';
-  if (el.textKind === 'field') {
-    if (el.bindField === 'directionMark') return '↑↓';
-    return `[${el.bindField || '未绑定'}]`;
-  }
-  return el.text || '静态文本';
+  return getTemplatePreviewElementStyle(el, previewTemplate.value, { maxScale: 1.4, maxWidth: 340 });
 }
 
 function getBarcodeHumanTextStyle(el, template) {
-  if (!template) return {};
-  const z = Math.min(1.3, 300 / (template.size.width * PX_PER_MM));
-  return {
-    fontSize: `${getBarcodeHumanTextFontSize(el, z)}px`,
-    marginTop: `${2 * z}px`,
-  };
+  return getTemplatePreviewBarcodeHumanTextStyle(el, template, { maxScale: 1.3, maxWidth: 300 });
 }
 
 function getBarcodeBarStyle(el, template) {
-  if (!template) return {};
-  const z = Math.min(1.3, 300 / (template.size.width * PX_PER_MM));
-  return getBarcodeBarStyleBase(el, z);
-}
-
-function getPrintPreviewData() {
-  const row = printState.value?.businessList?.[0];
-  return row?.fields || row || {};
+  return getTemplatePreviewBarcodeBarStyle(el, template, { maxScale: 1.3, maxWidth: 300 });
 }
 
 // -- Methods --
@@ -596,83 +465,6 @@ async function handlePreview(record) {
   }
 }
 
-async function handlePrint(record) {
-  if (record.status !== 'enabled') {
-    message.warning('模板未启用，不能打印');
-    return;
-  }
-  try {
-    const tpl = await getTemplate(record.id);
-    // Map template type to business data type
-    const bizType = tpl.templateType;
-    let businessList = [];
-    try {
-      const result = await searchBusinessData({ bizType, pageSize: 20 });
-      businessList = result?.rows || result?.data || [];
-    } catch { /* no business data available */ }
-
-    printState.value = {
-      template: tpl,
-      copies: 1,
-      printAll: true,
-      businessList,
-      selectedRowIndices: businessList.map((_, idx) => idx),
-      previewElements: tpl.elements || [],
-      printing: false,
-    };
-    printVisible.value = true;
-  } catch (error) {
-    message.error('获取模板详情失败：' + error.message);
-  }
-}
-
-async function doPrint() {
-  if (!printState.value) return;
-  const s = printState.value;
-  s.printing = true;
-  try {
-    const allBiz = s.businessList || [];
-    const bizList = s.printAll
-      ? allBiz
-      : allBiz.filter((_, idx) => s.selectedRowIndices.includes(idx));
-    const rows = bizList.length
-      ? bizList.map((item) => (item.fields ? { ...item.fields } : item))
-      : [{}];
-    const blob = await downloadPrintPdf({
-      templateId: s.template.id,
-      rows,
-      copies: s.copies,
-    });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = printFileName(s.template.templateType);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    message.success('打印文件已下载');
-    printVisible.value = false;
-  } catch (error) {
-    message.error('打印失败：' + error.message);
-  } finally {
-    s.printing = false;
-  }
-}
-
-async function handleToggleStatus(record) {
-  try {
-    if (record.status === 'enabled') {
-      await disableTemplate(record.id);
-      message.success('模板已停用');
-    } else {
-      await enableTemplate(record.id);
-      message.success('模板已启用');
-    }
-    fetchData();
-  } catch (error) {
-    message.error('操作失败：' + error.message);
-  }
-}
-
 async function handleCopy(record) {
   try {
     await copyTemplate(record.id);
@@ -721,22 +513,6 @@ function handleBatchToggleStatus(status) {
     },
   });
 }
-
-function printFileName(templateType) {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const seq = String(Date.now() % 1000).padStart(3, '0');
-  return `${templateType || 'PRINT'}_${y}${m}${d}${seq}.pdf`;
-}
-
-// Watch printAll toggle to auto-select/deselect all rows
-watch(() => printState.value?.printAll, (isAll) => {
-  if (isAll && printState.value) {
-    printState.value.selectedRowIndices = printState.value.businessList.map((_, idx) => idx);
-  }
-});
 
 // -- Lifecycle --
 onMounted(() => {

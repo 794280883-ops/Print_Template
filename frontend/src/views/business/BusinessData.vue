@@ -58,7 +58,7 @@
         :data-source="displayRows"
         :loading="loading"
         :pagination="tablePagination"
-        :row-key="r => r.id"
+        :row-key="r => r._dbId"
         :row-selection="rowSelection"
         :show-sorter-tooltip="false"
         @change="handleTableChange"
@@ -98,10 +98,10 @@
       <a-form layout="vertical" v-if="editRecord">
         <template v-for="f in currentFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
-            <a-input-number v-if="f.type === 'integer'" v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" :precision="0" style="width:100%" />
-            <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" style="width:100%" />
-            <a-date-picker v-else-if="f.type === 'date'" v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" style="width:100%" />
-            <a-input v-else v-model:value="editFields[f.code]" :disabled="f.code === codeFieldCode" />
+            <a-input-number v-if="f.type === 'integer'" v-model:value="editFields[f.code]" :precision="0" style="width:100%" />
+            <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" style="width:100%" />
+            <a-date-picker v-else-if="f.type === 'date'" v-model:value="editFields[f.code]" style="width:100%" />
+            <a-input v-else v-model:value="editFields[f.code]" />
           </a-form-item>
         </template>
       </a-form>
@@ -162,7 +162,8 @@
               </div>
             </a-form-item>
             <a-form-item label="打印份数">
-              <a-input-number v-model:value="printCopies" :min="1" :max="99" style="width:100%" />
+              <a-input-number v-model:value="printCopies" :min="1" :max="99999" style="width:100%" />
+              <div style="font-size:12px;color:#999;margin-top:4px">请输入 1-1000，超出上限将无法打印</div>
             </a-form-item>
             <div style="font-size:12px;color:#999;line-height:1.6">
               已选 <b>{{ printRecords.length }}</b> 条{{ typeLabel }}数据，将按照所选模版排版打印
@@ -217,8 +218,15 @@ import { usePermissionStore } from '../../stores/permission.js';
 const { hasPermission } = usePermissionStore();
 import { listTemplates, getTemplate, downloadPrintPdf, listFields, getLastPrintTemplate } from '../../api/templateApi.js';
 import { listBusinessModules } from '../../api/businessModuleApi.js';
-import { FIELD_DICT, TYPE_LABEL, PX_PER_MM, FALLBACK_MODULES } from '../../data/constants.js';
-import { getBarcodeBarStyle as getBarcodeBarStyleBase, getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
+import { FIELD_DICT, TYPE_LABEL, FALLBACK_MODULES } from '../../data/constants.js';
+import { getBarcodeHumanText, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
+import {
+  getTemplatePreviewBarcodeBarStyle,
+  getTemplatePreviewBarcodeHumanTextStyle,
+  getTemplatePreviewCanvasStyle,
+  getTemplatePreviewElementStyle,
+  getTemplatePreviewText,
+} from '../../services/templatePreviewStyleService.js';
 
 const rows = ref([]);
 const loading = ref(false);
@@ -450,7 +458,7 @@ async function handleBatchPrint() {
     message.warning('请先选择要打印的数据');
     return;
   }
-  const selected = rows.value.filter(r => selectedRowKeys.value.includes(r.id));
+  const selected = rows.value.filter(r => selectedRowKeys.value.includes(r._dbId));
   printRecords.value = selected;
   selectedTemplateId.value = null;
   selectedTemplate.value = null;
@@ -494,28 +502,11 @@ function selectPrintTemplate(tpl) {
 }
 
 const printCanvasStyle = computed(() => {
-  const tpl = selectedTemplate.value;
-  if (!tpl) return {};
-  const z = Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM));
-  return { width: `${tpl.size.width * PX_PER_MM * z}px`, height: `${tpl.size.height * PX_PER_MM * z}px` };
+  return getTemplatePreviewCanvasStyle(selectedTemplate.value, { maxScale: 1.3, maxWidth: 300 });
 });
 
 function getPrintPreviewStyle(el) {
-  const tpl = selectedTemplate.value;
-  if (!tpl) return {};
-  const z = Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM));
-  return {
-    left: `${el.x * PX_PER_MM * z}px`,
-    top: `${el.y * PX_PER_MM * z}px`,
-    width: `${el.width * PX_PER_MM * z}px`,
-    height: `${el.height * PX_PER_MM * z}px`,
-    zIndex: el.zIndex || 1,
-    fontSize: `${(el.fontSize || 12) * z}px`,
-    fontWeight: el.bold ? 700 : 400,
-    color: el.color || '#111827',
-    background: el.type === 'line' ? (el.color || '#111827') : (el.backgroundColor || 'transparent'),
-    transform: `rotate(${el.rotate || 0}deg)`,
-  };
+  return getTemplatePreviewElementStyle(el, selectedTemplate.value, { maxScale: 1.3, maxWidth: 300 });
 }
 
 function getPrintPreviewData() {
@@ -524,18 +515,11 @@ function getPrintPreviewData() {
 }
 
 function getBarcodeHumanTextStyle(el) {
-  const tpl = selectedTemplate.value;
-  const z = tpl ? Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM)) : 1;
-  return {
-    fontSize: `${getBarcodeHumanTextFontSize(el, z)}px`,
-    marginTop: `${2 * z}px`,
-  };
+  return getTemplatePreviewBarcodeHumanTextStyle(el, selectedTemplate.value, { maxScale: 1.3, maxWidth: 300 });
 }
 
 function getBarcodeBarStyle(el) {
-  const tpl = selectedTemplate.value;
-  const z = tpl ? Math.min(1.3, 300 / (tpl.size.width * PX_PER_MM)) : 1;
-  return getBarcodeBarStyleBase(el, z);
+  return getTemplatePreviewBarcodeBarStyle(el, selectedTemplate.value, { maxScale: 1.3, maxWidth: 300 });
 }
 
 function printFileName(templateType) {
@@ -547,17 +531,12 @@ function printFileName(templateType) {
   return `${templateType || 'PRINT'}_${y}${m}${d}${seq}.pdf`;
 }
 
-function getTemplatePreviewText(el) {
-  if (el.type !== 'text') return '';
-  if (el.textKind === 'field') {
-    if (el.bindField === 'directionMark') return '↑↓';
-    return `[${el.bindField || '未绑定'}]`;
-  }
-  return el.text || '静态文本';
-}
-
 async function doPrintRecord() {
   if (!selectedTemplateId.value || !printRecords.value.length) return;
+  if (printCopies.value < 1 || printCopies.value > 1000) {
+    message.error(`打印份数（${printCopies.value}）超出范围，请输入 1-1000 的份数`);
+    return;
+  }
   printLoading.value = true;
   try {
     const rows = printRecords.value.map(item => (item.fields ? { ...item.fields } : item));
@@ -598,7 +577,7 @@ async function handleEditSave() {
   }
   saving.value = true;
   try {
-    await updateBusinessData(filters.type, editRecord.value.businessCode, editFields.value);
+    await updateBusinessData(filters.type, editRecord.value.businessCode, editFields.value, editRecord.value._dbId);
     message.success('保存成功');
     editing.value = false;
     fetchData();
@@ -610,15 +589,15 @@ async function handleEditSave() {
 }
 
 async function handleBatchDelete() {
-  const selected = rows.value.filter(r => selectedRowKeys.value.includes(r.id));
-  const codes = selected.map(r => r.businessCode).filter(Boolean);
-  if (!codes.length) {
+  const selected = rows.value.filter(r => selectedRowKeys.value.includes(r._dbId));
+  const ids = selected.map(r => r._dbId).filter(Boolean);
+  if (!ids.length) {
     message.warning('请先选择要删除的数据');
     return;
   }
   try {
-    const result = await deleteBusinessDataBatch(filters.type, codes);
-    message.success(`删除成功：${result.deleted || codes.length} 条`);
+    const result = await deleteBusinessDataBatch(filters.type, ids);
+    message.success(`删除成功：${result.deleted || ids.length} 条`);
     selectedRowKeys.value = [];
     fetchData();
   } catch (e) {

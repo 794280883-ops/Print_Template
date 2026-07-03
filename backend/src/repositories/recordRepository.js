@@ -1,5 +1,10 @@
 import { pool } from "../config/db.js";
 
+/** Get a dedicated connection from the pool (for transactions). */
+export function getConnection() {
+  return pool.getConnection();
+}
+
 export async function search(moduleCode, { keyword, fieldFilters = {}, page = 1, pageSize = 20, sortField, sortDir, allowedSortFields = [] } = {}) {
   const safePage = Math.max(1, Number(page) || 1);
   const safeSize = Math.min(200, Math.max(1, Number(pageSize) || 20));
@@ -14,12 +19,14 @@ export async function search(moduleCode, { keyword, fieldFilters = {}, page = 1,
       .map((s) => s.trim())
       .filter(Boolean);
     if (codes.length === 1) {
-      where += " AND record_code LIKE ?";
-      params.push(`%${codes[0]}%`);
+      where += " AND (record_code LIKE ? OR search_text LIKE ?)";
+      params.push(`%${codes[0]}%`, `%${codes[0]}%`);
     } else if (codes.length > 1) {
-      const placeholders = codes.map(() => "?").join(", ");
-      where += ` AND record_code IN (${placeholders})`;
-      params.push(...codes);
+      const clauses = codes.map(() => "(record_code LIKE ? OR search_text LIKE ?)");
+      where += ` AND (${clauses.join(" OR ")})`;
+      for (const c of codes) {
+        params.push(`%${c}%`, `%${c}%`);
+      }
     }
   }
 
@@ -70,15 +77,33 @@ function isAllowedSortField(sortField, allowedSortFields) {
     allowedSortFields.includes(sortField);
 }
 
-export async function getByCode(moduleCode, recordCode) {
-  const [rows] = await pool.query(
+export async function getByCode(moduleCode, recordCode, conn = pool) {
+  const [rows] = await conn.query(
     "SELECT * FROM business_record WHERE module_code = ? AND record_code = ? LIMIT 1",
     [moduleCode, recordCode],
   );
   return rows[0] ? toDto(rows[0]) : null;
 }
 
-export async function existsByUniqueFields(moduleCode, uniqueFields, recordData, excludeRecordCode = null) {
+export async function getById(dbId, conn = pool) {
+  const [rows] = await conn.query(
+    "SELECT * FROM business_record WHERE id = ? LIMIT 1",
+    [dbId],
+  );
+  return rows[0] ? toDto(rows[0]) : null;
+}
+
+export async function updateById(dbId, { recordCode, recordData, searchText }, conn = pool) {
+  await conn.query(
+    `UPDATE business_record
+     SET record_code = ?, record_data = ?, search_text = ?
+     WHERE id = ?`,
+    [recordCode, JSON.stringify(recordData), searchText, dbId],
+  );
+  return getById(dbId, conn);
+}
+
+export async function existsByUniqueFields(moduleCode, uniqueFields, recordData, excludeRecordCode = null, conn = pool) {
   if (!uniqueFields || !uniqueFields.length) return false;
   let where = "WHERE module_code = ?";
   const params = [moduleCode];
@@ -90,30 +115,41 @@ export async function existsByUniqueFields(moduleCode, uniqueFields, recordData,
     where += " AND record_code <> ?";
     params.push(excludeRecordCode);
   }
-  const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total FROM business_record ${where}`,
+  // FOR UPDATE locks matching rows (or gap) to prevent concurrent duplicate inserts
+  const [[{ total }]] = await conn.query(
+    `SELECT COUNT(*) AS total FROM business_record ${where} FOR UPDATE`,
     params,
   );
   return total > 0;
 }
 
-export async function create({ moduleCode, recordCode, recordData, searchText }) {
-  await pool.query(
+export async function create({ moduleCode, recordCode, recordData, searchText }, conn = pool) {
+  await conn.query(
     `INSERT INTO business_record (module_code, record_code, record_data, search_text)
      VALUES (?, ?, ?, ?)`,
     [moduleCode, recordCode, JSON.stringify(recordData), searchText],
   );
-  return getByCode(moduleCode, recordCode);
+  return getByCode(moduleCode, recordCode, conn);
 }
 
-export async function update(moduleCode, recordCode, { recordData, searchText }) {
-  await pool.query(
-    `UPDATE business_record
-     SET record_data = ?, search_text = ?
-     WHERE module_code = ? AND record_code = ?`,
-    [JSON.stringify(recordData), searchText, moduleCode, recordCode],
-  );
-  return getByCode(moduleCode, recordCode);
+export async function update(moduleCode, recordCode, { recordData, searchText, newRecordCode }, conn = pool) {
+  const targetCode = newRecordCode || recordCode;
+  if (newRecordCode && newRecordCode !== recordCode) {
+    await conn.query(
+      `UPDATE business_record
+       SET record_code = ?, record_data = ?, search_text = ?
+       WHERE module_code = ? AND record_code = ?`,
+      [newRecordCode, JSON.stringify(recordData), searchText, moduleCode, recordCode],
+    );
+  } else {
+    await conn.query(
+      `UPDATE business_record
+       SET record_data = ?, search_text = ?
+       WHERE module_code = ? AND record_code = ?`,
+      [JSON.stringify(recordData), searchText, moduleCode, recordCode],
+    );
+  }
+  return getByCode(moduleCode, targetCode, conn);
 }
 
 export async function remove(moduleCode, recordCode) {
@@ -134,8 +170,31 @@ export async function removeMany(moduleCode, recordCodes = []) {
   return result.affectedRows;
 }
 
+/**
+ * Delete records by their database primary key IDs.
+ * More precise than code-based deletion — each ID maps to exactly one row.
+ */
+export async function removeByIds(ids = []) {
+  if (!ids.length) return 0;
+  const placeholders = ids.map(() => "?").join(", ");
+  const [result] = await pool.query(
+    `DELETE FROM business_record WHERE id IN (${placeholders})`,
+    ids,
+  );
+  return result.affectedRows;
+}
+
+export async function removeById(dbId) {
+  const [result] = await pool.query(
+    "DELETE FROM business_record WHERE id = ?",
+    [dbId],
+  );
+  return result.affectedRows;
+}
+
 function toDto(row) {
   return {
+    _dbId: row.id,
     id: `${row.module_code}:${row.record_code}`,
     businessType: row.module_code,
     businessCode: row.record_code,

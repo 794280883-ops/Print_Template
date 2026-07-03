@@ -116,11 +116,6 @@ const parentName = computed(() => {
   return p ? p.name : '顶级';
 });
 
-function findParent(id) {
-  const m = menus.value.find(x => x.id === id);
-  return m ? m.parent_id : 0;
-}
-
 function collectDescendantIds(id, list) {
   list.push(id);
   for (const m of menus.value) {

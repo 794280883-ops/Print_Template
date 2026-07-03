@@ -99,10 +99,6 @@ function applyCustomPageSize() {
   pageState.pageSize = Math.min(size, 10000);
   pageState.current = 1;
 }
-function onPageChange(pag) {
-  pageState.current = pag.current;
-  pageState.pageSize = pag.pageSize;
-}
 
 async function loadData() {
   loading.value = true;

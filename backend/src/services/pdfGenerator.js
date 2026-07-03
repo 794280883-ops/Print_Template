@@ -6,37 +6,56 @@ import { env } from "../config/env.js";
 import { cssPxToPdfPt, elementBoxToPdfPoints, getBarcodeLayout, getTextLayout, MM_TO_PT } from "./pdfLayout.js";
 
 /**
- * Generate a PDF buffer from a template and data rows.
- * Each data row produces a separate page.
+ * Generate a PDF from a template and data rows.
+ *
+ * When options.output (a writable stream) is provided, the PDF is piped directly
+ * to it and the promise resolves with undefined — ideal for HTTP streaming.
+ * Without options.output, returns a Buffer (backward compatible).
  *
  * @param {Object} template - template object with size and elements
  * @param {Array<Object>} dataRows - array of data objects for field substitution
  * @param {Object} [options]
  * @param {number} [options.copies=1] - number of copies per data row
- * @returns {Promise<Buffer>} PDF buffer
+ * @param {WritableStream} [options.output] - optional writable stream for streaming mode
+ * @returns {Promise<Buffer|undefined>} PDF buffer (buffer mode) or undefined (streaming mode)
  */
 export async function generateTemplatePdf(template, dataRows, options = {}) {
   const copies = Math.max(1, options.copies || 1);
+  const output = options.output;
   const { size, elements = [] } = template;
   const outputSize = { ...size, width: Number(size.width), height: Number(size.height) };
 
   const pageWidthPt = outputSize.width * MM_TO_PT;
   const pageHeightPt = outputSize.height * MM_TO_PT;
 
+  // Streaming mode: disable page buffer to keep memory low for large jobs.
+  // Buffer mode: keep bufferPages for backward compatible PDF output.
   const doc = new PDFDocument({
     size: [pageWidthPt, pageHeightPt],
     margin: 0,
     autoFirstPage: false,
-    bufferPages: true,
+    bufferPages: !output,
   });
 
-  // Collect PDF data
-  const pdfPromise = new Promise((resolve, reject) => {
+  // Set up result: stream or buffer mode
+  let resultPromise;
+  if (output) {
+    // Streaming mode: pipe directly to writable stream (e.g. HTTP response)
+    doc.pipe(output);
+    resultPromise = new Promise((resolve, reject) => {
+      output.on("finish", resolve);
+      output.on("error", reject);
+      doc.on("error", reject);
+    });
+  } else {
+    // Buffer mode: collect chunks in memory (backward compatible)
     const buffers = [];
     doc.on("data", (chunk) => buffers.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(buffers)));
-    doc.on("error", reject);
-  });
+    resultPromise = new Promise((resolve, reject) => {
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", reject);
+    });
+  }
 
   // Register CJK font for Chinese text
   let cjkFontRegistered = false;
@@ -66,7 +85,7 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
 
   doc.end();
 
-  return pdfPromise;
+  return resultPromise;
 }
 
 async function renderPage(doc, elements, data, templateSize, ensureCjkFont) {
@@ -127,13 +146,11 @@ const DIR_ARROWS = { "向上": "↑", "向下": "↓", "向左": "←", "向右"
 function dirArrow(v) { return DIR_ARROWS[v] || v; }
 
 function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
-  // When bindField exists and data provides the value, always use field value (print mode)
-  // Otherwise use static text (designer placeholder)
-  const rawValue = (el.bindField && data[el.bindField] !== undefined)
-    ? String(data[el.bindField])
-    : el.textKind === "field"
-      ? `[${el.bindField || "未绑定"}]`
-      : (el.text ?? "静态文本");
+  // When bindField exists, use the data value (empty string if missing).
+  // Otherwise use static text (designer placeholder).
+  const rawValue = el.bindField
+    ? String(data[el.bindField] ?? "")
+    : (el.text ?? "静态文本");
 
   if (!rawValue) return;
 
@@ -166,7 +183,7 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
 
 // ── Barcode ─────────────────────────────────────────
 async function renderBarcode(doc, el, data, x, y, w, h) {
-  const value = String(data[el.bindField] ?? el.bindField ?? "123456");
+  const value = String(data[el.bindField] ?? "123456");
   if (!value) return;
 
   try {
@@ -209,7 +226,7 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
 
 // ── QR Code ─────────────────────────────────────────
 async function renderQrcode(doc, el, data, x, y, w, h) {
-  const value = String(data[el.bindField] ?? el.bindField ?? "https://example.com");
+  const value = String(data[el.bindField] ?? "https://example.com");
   if (!value) return;
 
   try {

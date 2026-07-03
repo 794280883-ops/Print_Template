@@ -66,14 +66,14 @@
             <a-space>
               <a-button size="small" type="link" @click="openEditFieldModal(record)" v-permission="'field:edit'">编辑</a-button>
               <template v-if="record.enabled !== false">
-                <a-popconfirm v-if="hasPermission('field:disable')" title="确认停用该字段?" @confirm="handleDisableField(record)">
+                <a-popconfirm v-if="hasPermission('field:disable') && !isModulePrimaryField(record.code)" title="确认停用该字段?" @confirm="handleDisableField(record)">
                   <a-button size="small" danger type="link">停用</a-button>
                 </a-popconfirm>
               </template>
               <template v-else>
                 <a-button size="small" type="link" @click="handleEnableField(record)" v-permission="'field:enable'">启用</a-button>
               </template>
-              <a-popconfirm v-if="hasPermission('field:delete')" title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
+              <a-popconfirm v-if="hasPermission('field:delete') && !isModulePrimaryField(record.code)" title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
                 <a-button size="small" danger type="link">删除</a-button>
               </a-popconfirm>
             </a-space>
@@ -176,6 +176,7 @@ import {
 import { listFields } from '../../api/templateApi.js';
 import { FIELD_DICT, FALLBACK_MODULES, BUILT_IN_MODULE_CODES } from '../../data/constants.js';
 import { usePermissionStore } from '../../stores/permission.js';
+import { useDragModal } from '../../composables/useDragModal.js';
 
 const { hasPermission } = usePermissionStore();
 
@@ -222,6 +223,10 @@ const isCodeField = computed(() => {
   const codeField = activeModule.value?.codeField || activeModule.value?.recordCodeField;
   return fieldForm.value.code === codeField;
 });
+
+function isModulePrimaryField(fieldCode) {
+  return fieldCode === (activeModule.value?.codeField || activeModule.value?.recordCodeField);
+}
 const canDeleteActiveModule = computed(() => !!activeType.value && !builtInCodes.has(activeType.value));
 
 const fields = computed(() => {
@@ -500,6 +505,11 @@ async function handleDeleteModule() {
 watch(activeType, (type) => {
   fetchFields(type);
 });
+
+// 弹窗支持鼠标拖拽移动
+const { watchOpen: watchDrag } = useDragModal();
+watchDrag(moduleModalOpen);
+watchDrag(fieldModalOpen);
 
 onMounted(async () => {
   await fetchModules();

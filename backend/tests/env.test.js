@@ -44,5 +44,5 @@ test("PDF CJK font path can be configured by environment", async () => {
 
 test("PDF CJK font path keeps the existing local fallback", async () => {
   const { env } = await loadEnv({ NODE_ENV: "development" });
-  assert.equal(env.pdf.cjkFontPath, "/Library/Fonts/Arial Unicode.ttf");
+  assert.equal(env.pdf.cjkFontPath, new URL("../fonts/ArialUnicode.ttf", import.meta.url).pathname);
 });

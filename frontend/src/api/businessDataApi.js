@@ -17,23 +17,17 @@ export function createBusinessData(bizType, fields) {
   });
 }
 
-export function updateBusinessData(bizType, bizCode, fields) {
+export function updateBusinessData(bizType, bizCode, fields, dbId) {
   return request(`/business-data/${encodeURIComponent(bizType)}/${encodeURIComponent(bizCode)}`, {
     method: "PUT",
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify({ fields, _dbId: dbId }),
   });
 }
 
-export function deleteBusinessData(bizType, bizCode) {
-  return request(`/business-data/${encodeURIComponent(bizType)}/${encodeURIComponent(bizCode)}`, {
-    method: "DELETE",
-  });
-}
-
-export function deleteBusinessDataBatch(bizType, codes) {
+export function deleteBusinessDataBatch(bizType, ids) {
   return request(`/business-data/batch/${encodeURIComponent(bizType)}`, {
     method: "DELETE",
-    body: JSON.stringify({ codes }),
+    body: JSON.stringify({ ids }),
   });
 }
 

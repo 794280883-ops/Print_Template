@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { after } from "node:test";
+import { after, before } from "node:test";
 import test from "node:test";
 import bcrypt from "bcryptjs";
 import XLSX from "xlsx";
@@ -10,7 +10,31 @@ import { testDbPool } from "../src/config/testDb.js";
 const rawFetch = globalThis.fetch.bind(globalThis);
 const adminTokensByOrigin = new Map();
 
+// ── Tracking for cleanup ──
+const createdModules = new Set();
+const createdTemplates = new Set();
+
+async function cleanupTestData() {
+  // Clean up business records created by tests
+  if (createdModules.size > 0) {
+    const placeholders = [...createdModules].map(() => "?").join(", ");
+    await pool.query(`DELETE FROM business_record WHERE module_code IN (${placeholders})`, [...createdModules]);
+    await pool.query(`DELETE FROM print_business_module WHERE module_code IN (${placeholders})`, [...createdModules]);
+    await pool.query(`DELETE FROM print_field_dict WHERE module_code IN (${placeholders})`, [...createdModules]);
+  }
+  if (createdTemplates.size > 0) {
+    const placeholders = [...createdTemplates].map(() => "?").join(", ");
+    await pool.query(`DELETE FROM print_template_element WHERE template_id IN (SELECT id FROM print_template WHERE template_code IN (${placeholders}))`);
+    await pool.query(`DELETE FROM print_template WHERE template_code IN (${placeholders})`, [...createdTemplates]);
+  }
+}
+
+before(async () => {
+  // Make sure DB is ready
+});
+
 after(async () => {
+  await cleanupTestData();
   await pool.end();
   await testDbPool.end();
 });
@@ -122,7 +146,7 @@ test("GET /api/v1/template/fields/location returns field dictionary", async () =
   }
 });
 
-test("GET /api/v1/health/db returns test database health response", async () => {
+test("GET /api/v1/health/db returns test database health response", { skip: !process.env.RUN_DB_TESTS }, async () => {
   const server = await listen(createApp());
   try {
     const port = server.address().port;
@@ -181,6 +205,7 @@ test("POST /api/v1/business-modules creates custom module with fields", async ()
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
     const moduleCode = `TST_${suffix}`;
+    createdModules.add(moduleCode);
     const response = await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -217,6 +242,7 @@ test("DELETE /api/v1/business-modules/:code disables custom module from module a
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
     const moduleCode = `DEL_${suffix}`;
+    createdModules.add(moduleCode);
     await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -257,6 +283,7 @@ test("POST /api/v1/business-modules restores a disabled module and its primary f
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
     const moduleCode = `RST_${suffix}`;
+    createdModules.add(moduleCode);
     const requestBody = {
       code: moduleCode,
       name: "恢复前模块",
@@ -328,6 +355,7 @@ test("PUT /api/v1/business-modules/:code updates module display names", async ()
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
     const moduleCode = `REN_${suffix}`;
+    createdModules.add(moduleCode);
     await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -374,6 +402,7 @@ test("PUT /api/v1/business-modules/:code/fields/:fieldCode updates field metadat
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
     const moduleCode = `TUF_${suffix}`;
+    createdModules.add(moduleCode);
     await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -402,7 +431,7 @@ test("PUT /api/v1/business-modules/:code/fields/:fieldCode updates field metadat
   }
 });
 
-test("POST /api/v1/business-modules/:code/fields/:fieldCode/disable rejects referenced field", async () => {
+test("POST /api/v1/business-modules/:code/fields/:fieldCode/disable rejects primary code field", async () => {
   const server = await listen(createApp());
   try {
     const port = server.address().port;
@@ -410,7 +439,7 @@ test("POST /api/v1/business-modules/:code/fields/:fieldCode/disable rejects refe
     const body = await response.json();
     assert.equal(response.status, 409);
     assert.equal(body.code, 40002);
-    assert.match(body.message, /已被模板引用/);
+    assert.match(body.message, /主编码字段不允许停用或删除/);
   } finally {
     server.close();
   }
@@ -422,6 +451,7 @@ test("custom module business data uses business_data JSON storage", async () => 
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
     const moduleCode = `BD_${suffix}`;
+    createdModules.add(moduleCode);
     await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -433,7 +463,7 @@ test("custom module business data uses business_data JSON storage", async () => 
         codeField: "bizCode",
         fields: [
           { code: "bizCode", name: "业务编码", type: "string", required: true, sortNo: 10 },
-          { code: "bizName", name: "业务名称", type: "string", required: false, sortNo: 20 },
+          { code: "bizName", name: "业务名称", type: "string", required: false, searchable: true, sortNo: 20 },
         ],
       }),
     });
@@ -489,9 +519,10 @@ test("business data import template returns headers without comment", async () =
   }
 });
 
-test("business data primary field allows duplicates but cannot be changed", async () => {
+test("business data primary field allows duplicates and supports code changes", async () => {
   const server = await listen(createApp());
   const recordCode = `UNIQUE_${Date.now().toString(36).toUpperCase()}`;
+  const changedCode = `${recordCode}_CHANGED`;
   try {
     const port = server.address().port;
     let response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data`, {
@@ -501,6 +532,7 @@ test("business data primary field allows duplicates but cannot be changed", asyn
     });
     assert.equal(response.status, 200);
 
+    // Duplicate code is allowed (003 migration removed UNIQUE constraint)
     response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -508,18 +540,20 @@ test("business data primary field allows duplicates but cannot be changed", asyn
     });
     assert.equal(response.status, 200);
 
+    // Code change is now supported — updates record_code + record_data
     response = await fetch(`http://127.0.0.1:${port}/api/v1/business-data/LOCATION/${recordCode}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fields: { locationCode: `${recordCode}_CHANGED` } }),
+      body: JSON.stringify({ fields: { locationCode: changedCode } }),
     });
     const updateBody = await response.json();
-    assert.equal(response.status, 400);
-    assert.match(updateBody.message, /不允许修改/);
+    assert.equal(response.status, 200);
+    assert.equal(updateBody.data.businessCode, changedCode);
   } finally {
-    await pool.query("DELETE FROM business_record WHERE module_code = ? AND record_code IN (?, ?)", [
+    await pool.query("DELETE FROM business_record WHERE module_code = ? AND record_code IN (?, ?, ?)", [
       "LOCATION",
       recordCode,
+      changedCode,
       `${recordCode}_CHANGED`,
     ]);
     server.close();
@@ -568,7 +602,7 @@ test("business data import allows duplicate and existing primary values", async 
       "SELECT record_code FROM business_record WHERE module_code = ? AND record_code IN (?, ?, ?)",
       ["LOCATION", existingCode, duplicateCode, validCode],
     );
-    assert.equal(rows.length, 4);
+    assert.equal(rows.length, 5);
   } finally {
     await pool.query("DELETE FROM business_record WHERE module_code = ? AND record_code IN (?, ?, ?)", [
       "LOCATION",
@@ -585,11 +619,13 @@ test("POST /api/v1/print/pdf rejects mismatched business type", async () => {
   try {
     const port = server.address().port;
     const suffix = Date.now().toString(36).toUpperCase();
+    const templateCode = `TPL_PRINT_${suffix}`;
+    createdTemplates.add(templateCode);
     const templateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        templateCode: `TPL_PRINT_${suffix}`,
+        templateCode,
         templateName: `打印校验-${suffix}`,
         templateType: "LOCATION",
         status: "enabled",

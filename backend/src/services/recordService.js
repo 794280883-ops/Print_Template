@@ -3,6 +3,39 @@ import { compileSchema, listModuleSchemas } from "./schemaService.js";
 import { appError } from "../utils/response.js";
 import XLSX from "xlsx";
 
+/**
+ * Run a uniqueness check + insert/update within a transaction using SELECT ... FOR UPDATE.
+ * This prevents race conditions: two concurrent requests creating the same unique combination
+ * will serialize — the second one sees the first's inserted row and rejects.
+ */
+async function withUniqueGuard(moduleCode, schema, recordData, recordCode, action) {
+  const conn = await recordRepository.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // Lock: if unique fields configured, lock the range to prevent concurrent duplicate insert
+    if (schema.uniqueFields?.length) {
+      const exists = await recordRepository.existsByUniqueFields(
+        moduleCode, schema.uniqueFields, recordData, recordCode, conn,
+      );
+      if (exists) {
+        const fieldNames = schema.uniqueFields.map((f) => f.name).join(" + ");
+        const fieldValues = schema.uniqueFields.map((f) => recordData[f.code]).join(" / ");
+        throw appError(`${fieldNames}组合「${fieldValues}」已存在`, 40001, 409);
+      }
+    }
+
+    const result = await action(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 export async function listTypes() {
   return listModuleSchemas();
 }
@@ -80,50 +113,32 @@ export async function createRecord(payload = {}) {
     recordData[f.code] = String(fields[f.code] ?? "").trim();
   }
 
-  if (schema.uniqueFields?.length) {
-    const fieldNames = schema.uniqueFields.map((f) => f.name).join(" + ");
-    const fieldValues = schema.uniqueFields.map((f) => recordData[f.code]).join(" / ");
-    if (await recordRepository.existsByUniqueFields(moduleCode, schema.uniqueFields, recordData)) {
-      throw appError(`${fieldNames}组合「${fieldValues}」已存在`, 40001, 409);
-    }
-  }
-
   const searchText = schema.searchableFields
     .map((f) => recordData[f.code])
     .filter(Boolean)
     .join(" ");
 
-  return recordRepository.create({ moduleCode, recordCode, recordData, searchText });
+  return withUniqueGuard(moduleCode, schema, recordData, null, (conn) =>
+    recordRepository.create({ moduleCode, recordCode, recordData, searchText }, conn),
+  );
 }
 
 export async function updateRecord(bizType, bizCode, payload = {}) {
   const moduleCode = String(bizType || "").toUpperCase();
   const schema = await compileSchema(moduleCode);
   const recordCode = String(bizCode || "").trim();
+  const dbId = Number(payload._dbId) || 0;
   if (!recordCode) throw appError("缺少业务编码", 40000, 400);
 
-  const exists = await recordRepository.getByCode(moduleCode, recordCode);
-  if (!exists) throw appError("业务数据不存在", 40400, 404);
-
   const fields = payload.fields || {};
-  const requestedRecordCode = fields[schema.recordCodeField.code];
-  if (requestedRecordCode !== undefined && String(requestedRecordCode).trim() !== recordCode) {
-    throw appError(`${schema.recordCodeField.name}不允许修改`, 40000, 400);
-  }
+  const newRecordCode = String(fields[schema.recordCodeField.code] || "").trim();
+  if (!newRecordCode) throw appError(`${schema.recordCodeField.name}必填`, 40000, 400);
 
   const recordData = {};
   for (const f of schema.fields) {
     recordData[f.code] = f.code === schema.recordCodeField.code
-      ? recordCode
+      ? newRecordCode
       : String(fields[f.code] ?? "").trim();
-  }
-
-  if (schema.uniqueFields?.length) {
-    const fieldNames = schema.uniqueFields.map((f) => f.name).join(" + ");
-    const fieldValues = schema.uniqueFields.map((f) => recordData[f.code]).join(" / ");
-    if (await recordRepository.existsByUniqueFields(moduleCode, schema.uniqueFields, recordData, recordCode)) {
-      throw appError(`${fieldNames}组合「${fieldValues}」已存在`, 40001, 409);
-    }
   }
 
   const searchText = schema.searchableFields
@@ -131,30 +146,46 @@ export async function updateRecord(bizType, bizCode, payload = {}) {
     .filter(Boolean)
     .join(" ");
 
-  return recordRepository.update(moduleCode, recordCode, { recordData, searchText });
+  return withUniqueGuard(moduleCode, schema, recordData, recordCode, async (conn) => {
+    // Use DB primary key for precise row targeting when available
+    if (dbId) {
+      const exists = await recordRepository.getById(dbId, conn);
+      if (!exists) throw appError("业务数据不存在", 40400, 404);
+      return recordRepository.updateById(dbId, { recordCode: newRecordCode, recordData, searchText }, conn);
+    }
+    // Fallback: locate by module_code + record_code (legacy)
+    const exists = await recordRepository.getByCode(moduleCode, recordCode, conn);
+    if (!exists) throw appError("业务数据不存在", 40400, 404);
+    const options = { recordData, searchText };
+    if (newRecordCode !== recordCode) {
+      options.newRecordCode = newRecordCode;
+    }
+    return recordRepository.update(moduleCode, recordCode, options, conn);
+  });
 }
 
-export async function deleteRecord(bizType, bizCode) {
+export async function deleteRecord(bizType, bizCode, payload = {}) {
   const moduleCode = String(bizType || "").toUpperCase();
   const recordCode = String(bizCode || "").trim();
-  if (!recordCode) throw appError("缺少业务编码", 40000, 400);
-  const affectedRows = await recordRepository.remove(moduleCode, recordCode);
+  const dbId = Number(payload._dbId) || 0;
+  if (!dbId && !recordCode) throw appError("缺少业务编码", 40000, 400);
+
+  let affectedRows;
+  if (dbId) {
+    affectedRows = await recordRepository.removeById(dbId);
+  } else {
+    affectedRows = await recordRepository.remove(moduleCode, recordCode);
+  }
   if (!affectedRows) throw appError("业务数据不存在", 40400, 404);
   return { deleted: true };
 }
 
-export async function deleteRecords(bizType, payload = {}, repository = recordRepository) {
-  const moduleCode = String(bizType || "").toUpperCase();
-  const recordCodes = normalizeRecordCodes(payload.codes);
-  if (!recordCodes.length) throw appError("请选择要删除的业务数据", 40000, 400);
-  const affectedRows = await repository.removeMany(moduleCode, recordCodes);
+export async function deleteRecords(_bizType, payload = {}, repository = recordRepository) {
+  const ids = Array.isArray(payload.ids) ? payload.ids.map(Number).filter(id => id > 0) : [];
+  if (!ids.length) throw appError("请选择要删除的业务数据", 40000, 400);
+  const affectedRows = await repository.removeByIds(ids);
   if (!affectedRows) throw appError("业务数据不存在", 40400, 404);
   return { deleted: affectedRows };
-}
-
-function normalizeRecordCodes(codes) {
-  if (!Array.isArray(codes)) return [];
-  return [...new Set(codes.map((code) => String(code || "").trim()).filter(Boolean))];
 }
 
 export async function generateImportTemplate(bizType) {

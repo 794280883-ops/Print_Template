@@ -18,7 +18,7 @@ export async function update(req, res) {
 }
 
 export async function remove(req, res) {
-  sendSuccess(res, await recordService.deleteRecord(req.params.bizType, req.params.bizCode));
+  sendSuccess(res, await recordService.deleteRecord(req.params.bizType, req.params.bizCode, req.body));
 }
 
 export async function batchRemove(req, res) {

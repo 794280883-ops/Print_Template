@@ -492,12 +492,6 @@ function redo() {
   selectedElementId.value = template.value.elements[0]?.id || null;
 }
 
-// ── Element Operations ──
-function selectElement(id) {
-  if (id !== selectedElementId.value) pushHistory();
-  selectedElementId.value = id;
-}
-
 function deselect() {
   selectedElementId.value = null;
 }

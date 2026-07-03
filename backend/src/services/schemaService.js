@@ -8,7 +8,7 @@ export async function compileSchema(moduleCode) {
   if (!mod || !mod.enabled) throw appError(`业务模块不存在或已停用：${moduleCode}`, 40000, 400);
 
   const rows = await fieldRepository.listFields(code);
-  const fields = rows.filter((r) => r.enabled).map((r) => ({
+  const allFields = rows.map((r) => ({
     code: r.field_code,
     name: r.field_name,
     type: r.field_type,
@@ -18,10 +18,19 @@ export async function compileSchema(moduleCode) {
     sortable: Boolean(r.sortable),
     unique: Boolean(r.is_unique),
     bindableInTemplate: r.bindable_in_template !== 0,
+    enabled: Boolean(r.enabled),
   })).sort((a, b) => a.sortNo - b.sortNo);
 
-  const recordCodeField = fields.find((f) => f.code === mod.record_code_field);
-  if (!recordCodeField) throw appError(`模块 ${code} 的主编码字段不存在`, 50000, 500);
+  const fields = allFields.filter((f) => f.enabled);
+
+  // 主编码字段从启用字段中查找，找不到则回退到唯一字段或首个字段
+  let recordCodeField = fields.find((f) => f.code === mod.record_code_field);
+  if (!recordCodeField) {
+    // Fallback: use any unique field, or the first enabled field
+    recordCodeField = fields.find((f) => f.unique) || fields[0];
+    if (!recordCodeField) throw appError(`模块 ${code} 没有可用字段`, 50000, 500);
+    console.warn(`模块 ${code} 的主编码字段 ${mod.record_code_field} 未启用，已回退使用 ${recordCodeField.code}`);
+  }
 
   return {
     module: {
