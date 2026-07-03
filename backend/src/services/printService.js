@@ -4,13 +4,15 @@ import { generateTemplatePdf } from "./pdfGenerator.js";
 import { appError } from "../utils/response.js";
 
 /**
- * Build a safe business_no value that fits the print_log.business_no column.
- * Column is VARCHAR(128), so truncate with "..." if the joined codes exceed 125 chars.
+ * Build a safe business_no value for the print_log table.
+ * After migration 005 the column is TEXT (was VARCHAR(128)).
+ * Truncate at 2048 chars to prevent abuse while supporting bulk prints (~80+ records).
  */
+const BUSINESS_NO_MAX = 2048;
 function buildBusinessNo(rows, fallback) {
-  if (fallback) return fallback.slice(0, 128);
+  if (fallback) return fallback.length > BUSINESS_NO_MAX ? fallback.slice(0, BUSINESS_NO_MAX - 3) + "..." : fallback;
   const joined = rows.map((r, i) => r?.code || r?.businessCode || r?.recordCode || `row-${i + 1}`).join(", ");
-  return joined.length > 125 ? joined.slice(0, 122) + "..." : joined;
+  return joined.length > BUSINESS_NO_MAX ? joined.slice(0, BUSINESS_NO_MAX - 3) + "..." : joined;
 }
 
 /**
