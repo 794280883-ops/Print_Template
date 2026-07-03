@@ -26,8 +26,8 @@ services:
       NODE_ENV: production
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-wms_root_password}
+      DB_USER: ${MYSQL_USER:-wms_app}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-wms_app_password}
       DB_NAME: ${MYSQL_DATABASE:-wms_print_template}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:8080}

@@ -162,7 +162,7 @@
               </div>
             </a-form-item>
             <a-form-item label="打印份数">
-              <a-input-number v-model:value="printCopies" :min="1" :max="99999" style="width:100%" />
+              <a-input-number v-model:value="printCopies" :min="1" :max="1000" style="width:100%" />
               <div style="font-size:12px;color:#999;margin-top:4px">请输入 1-1000，超出上限将无法打印</div>
             </a-form-item>
             <div style="font-size:12px;color:#999;line-height:1.6">

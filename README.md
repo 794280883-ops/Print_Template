@@ -31,7 +31,7 @@
 # 启动 Docker Desktop（如果未运行）
 open -a "Docker Desktop"
 
-# 启动已有 MySQL 容器
+# 启动本机已有 MySQL 容器（容器名按本机实际情况替换）
 docker start mysql
 ```
 
@@ -47,7 +47,7 @@ cd /Users/l/Documents/Wms_Print/wms-print-template-center
 ### 3. 访问
 
 ```bash
-# 自动打开浏览器和 DataGrip
+# 手动打开浏览器和 DataGrip
 open http://127.0.0.1:5173
 open -a "DataGrip" "jdbc:mysql://127.0.0.1:3306/wms_print_template"
 ```
@@ -100,7 +100,8 @@ wms-print-template-center/
 ├── frontend/                 # 前端工程
 │   ├── tests/                # 前端测试
 │   ├── src/
-│   │   ├── api/              # API 封装（axios请求）
+│   │   ├── api/              # API 封装（fetch请求）
+│   │   ├── composables/      # Vue Composables（拖拽弹窗等可复用逻辑）
 │   │   ├── data/             # 数据常量
 │   │   ├── directives/       # 自定义指令（v-permission）
 │   │   ├── layouts/          # 布局组件（AppLayout/LoginLayout等）
@@ -175,7 +176,7 @@ git status --short --branch
 - ~~登录鉴权和权限控制~~ ✅ JWT 鉴权、路由守卫、v-permission 指令
 - 操作日志审计增强
 - 数据备份策略
-- 自动化测试
+- 端到端测试和覆盖率提升
 - 打印模板版本管理
 
 ## 项目规范
