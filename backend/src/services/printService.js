@@ -4,6 +4,16 @@ import { generateTemplatePdf } from "./pdfGenerator.js";
 import { appError } from "../utils/response.js";
 
 /**
+ * Build a safe business_no value that fits the print_log.business_no column.
+ * Column is VARCHAR(128), so truncate with "..." if the joined codes exceed 125 chars.
+ */
+function buildBusinessNo(rows, fallback) {
+  if (fallback) return fallback.slice(0, 128);
+  const joined = rows.map((r, i) => r?.code || r?.businessCode || r?.recordCode || `row-${i + 1}`).join(", ");
+  return joined.length > 125 ? joined.slice(0, 122) + "..." : joined;
+}
+
+/**
  * Validate the print request and create a print log entry.
  * Called BEFORE PDF generation so the filename and headers can be set.
  * Returns the template object and the log entry.
@@ -21,7 +31,7 @@ export async function preparePrint(payload) {
     templateId: template.id,
     templateCode: payload.templateCode || template.templateCode,
     businessType: payload.businessType || template.templateType,
-    businessNo: payload.businessNo || rows.map((r, i) => r?.code || `row-${i + 1}`).join(", "),
+    businessNo: buildBusinessNo(rows, payload.businessNo),
     warehouseCode: payload.warehouseCode || rows[0]?.warehouseCode || "",
     printPayload: {
       rows,
@@ -57,7 +67,7 @@ export async function generatePdf(payload) {
     templateId: template.id,
     templateCode: payload.templateCode || template.templateCode,
     businessType: payload.businessType || template.templateType,
-    businessNo: payload.businessNo || rows.map((r, i) => r?.code || `row-${i + 1}`).join(", "),
+    businessNo: buildBusinessNo(rows, payload.businessNo),
     warehouseCode: payload.warehouseCode || rows[0]?.warehouseCode || "",
     printPayload: {
       rows,
