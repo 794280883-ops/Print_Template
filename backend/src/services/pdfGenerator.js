@@ -74,12 +74,17 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
   // Sort elements by zIndex
   const sorted = [...elements].sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1));
 
+  // Pre-render barcode / QR code images per unique data row.
+  // Copies of the same row reuse cached buffers — the biggest performance win.
+  const imageCache = await prerenderImages(sorted, dataRows);
+
   // Generate pages
-  for (const dataRow of dataRows) {
+  for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
+    const dataRow = dataRows[rowIndex];
     if (!dataRow) continue;
     for (let copy = 0; copy < copies; copy++) {
       doc.addPage({ size: [pageWidthPt, pageHeightPt], margin: 0 });
-      await renderPage(doc, sorted, dataRow, outputSize, ensureCjkFont);
+      await renderPage(doc, sorted, dataRow, outputSize, ensureCjkFont, imageCache.get(rowIndex));
     }
   }
 
@@ -88,13 +93,79 @@ export async function generateTemplatePdf(template, dataRows, options = {}) {
   return resultPromise;
 }
 
-async function renderPage(doc, elements, data, templateSize, ensureCjkFont) {
-  for (const el of elements) {
-    await renderElement(doc, el, data, ensureCjkFont);
+/**
+ * Pre-render barcode and QR code images so copies of the same row reuse them.
+ * Returns Map<rowIndex, Map<elementUid, { type, buffer, layoutExtra }>>
+ */
+async function prerenderImages(sortedElements, dataRows) {
+  const cache = new Map();
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    if (!row) continue;
+    const rowCache = new Map();
+    for (const el of sortedElements) {
+      if (el.type === "barcode") {
+        const cached = await prerenderBarcode(el, row);
+        if (cached) rowCache.set(el.element_uid, cached);
+      } else if (el.type === "qrcode") {
+        const cached = await prerenderQrcode(el, row);
+        if (cached) rowCache.set(el.element_uid, cached);
+      }
+    }
+    cache.set(i, rowCache);
+  }
+  return cache;
+}
+
+async function prerenderBarcode(el, data) {
+  const value = String(data[el.bindField] ?? "");
+  if (!value) return null;
+  try {
+    const { x, y, w, h } = elementBoxToPdfPoints(el);
+    const layout = getBarcodeLayout(el, { x, y, w, h });
+    const barcodeBox = layout.barcodeBox;
+    const heightMm = barcodeBox.h / MM_TO_PT;
+    const widthMm = barcodeBox.w / MM_TO_PT;
+    const pngBuffer = await bwipjs.toBuffer({
+      bcid: "code128",
+      text: value,
+      scale: 5,
+      height: heightMm,
+      width: widthMm,
+      includetext: false,
+      paddingwidth: 0,
+      paddingheight: 0,
+    });
+    return { type: "barcode", buffer: pngBuffer, layout, value };
+  } catch {
+    return null;
   }
 }
 
-async function renderElement(doc, el, data, ensureCjkFont) {
+async function prerenderQrcode(el, data) {
+  const value = String(data[el.bindField] ?? "");
+  if (!value) return null;
+  try {
+    const { x, y, w, h } = elementBoxToPdfPoints(el);
+    const dataUrl = await QRCode.toDataURL(value, {
+      width: Math.round(w / MM_TO_PT * 3),
+      margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
+    });
+    const base64 = dataUrl.split(",")[1];
+    return { type: "qrcode", buffer: Buffer.from(base64, "base64"), x, y, w, h, value };
+  } catch {
+    return null;
+  }
+}
+
+async function renderPage(doc, elements, data, templateSize, ensureCjkFont, imageCache) {
+  for (const el of elements) {
+    await renderElement(doc, el, data, ensureCjkFont, imageCache);
+  }
+}
+
+async function renderElement(doc, el, data, ensureCjkFont, imageCache) {
   const { x, y, w, h } = elementBoxToPdfPoints(el);
 
   doc.save();
@@ -110,10 +181,10 @@ async function renderElement(doc, el, data, ensureCjkFont) {
         renderText(doc, el, data, x, y, w, h, ensureCjkFont);
         break;
       case "barcode":
-        await renderBarcode(doc, el, data, x, y, w, h);
+        await renderBarcode(doc, el, data, x, y, w, h, imageCache);
         break;
       case "qrcode":
-        await renderQrcode(doc, el, data, x, y, w, h);
+        await renderQrcode(doc, el, data, x, y, w, h, imageCache);
         break;
       case "line":
         renderLine(doc, el, x, y, w, h);
@@ -182,14 +253,34 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
 }
 
 // ── Barcode ─────────────────────────────────────────
-async function renderBarcode(doc, el, data, x, y, w, h) {
+async function renderBarcode(doc, el, data, x, y, w, h, imageCache) {
+  const cacheEntry = imageCache?.get(el.element_uid);
+  if (cacheEntry?.type === "barcode") {
+    const { buffer, layout } = cacheEntry;
+    const barcodeBox = layout.barcodeBox;
+    doc.image(buffer, barcodeBox.x, barcodeBox.y, { width: barcodeBox.w, height: barcodeBox.h });
+    if (layout.showHumanText && layout.textBox) {
+      doc.font("Helvetica")
+        .fontSize(layout.humanTextFontSize)
+        .fillColor(el.color || "#111827")
+        .text(cacheEntry.value, layout.textBox.x, layout.textBox.y, {
+          width: layout.textBox.w,
+          height: layout.textBox.h,
+          align: "center",
+          lineBreak: false,
+          ellipsis: true,
+        });
+    }
+    return;
+  }
+
+  // Fallback: render from scratch (should not normally be reached with cache)
   const value = String(data[el.bindField] ?? "123456");
   if (!value) return;
 
   try {
     const layout = getBarcodeLayout(el, { x, y, w, h });
     const barcodeBox = layout.barcodeBox;
-    // bwip-js height in mm, scale controls resolution (higher = sharper)
     const heightMm = barcodeBox.h / MM_TO_PT;
     const widthMm = barcodeBox.w / MM_TO_PT;
     const pngBuffer = await bwipjs.toBuffer({
@@ -202,8 +293,6 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
       paddingwidth: 0,
       paddingheight: 0,
     });
-
-    // Render barcode at exact element dimensions to match preview layout
     doc.image(pngBuffer, barcodeBox.x, barcodeBox.y, { width: barcodeBox.w, height: barcodeBox.h });
     if (layout.showHumanText && layout.textBox) {
       doc.font("Helvetica")
@@ -218,32 +307,32 @@ async function renderBarcode(doc, el, data, x, y, w, h) {
         });
     }
   } catch (err) {
-    // Fallback: draw a placeholder with the value
     doc.font("Helvetica").fontSize(8).fillColor("#666")
       .text(`[Barcode: ${value}]`, x, y, { width: w, height: h, align: "center" });
   }
 }
 
 // ── QR Code ─────────────────────────────────────────
-async function renderQrcode(doc, el, data, x, y, w, h) {
+async function renderQrcode(doc, el, data, x, y, w, h, imageCache) {
+  const cacheEntry = imageCache?.get(el.element_uid);
+  if (cacheEntry?.type === "qrcode") {
+    doc.image(cacheEntry.buffer, cacheEntry.x, cacheEntry.y, { width: cacheEntry.w, height: cacheEntry.h });
+    return;
+  }
+
+  // Fallback: render from scratch
   const value = String(data[el.bindField] ?? "https://example.com");
   if (!value) return;
 
   try {
-    // Generate QR code as PNG data URL
     const dataUrl = await QRCode.toDataURL(value, {
-      width: Math.round(w / MM_TO_PT * 3), // higher resolution for quality
+      width: Math.round(w / MM_TO_PT * 3),
       margin: 1,
       color: { dark: "#000000", light: "#ffffff" },
     });
-
-    // Convert data URL to buffer
     const base64 = dataUrl.split(",")[1];
-    const pngBuffer = Buffer.from(base64, "base64");
-
-    doc.image(pngBuffer, x, y, { width: w, height: h });
+    doc.image(Buffer.from(base64, "base64"), x, y, { width: w, height: h });
   } catch (err) {
-    // Fallback: placeholder text
     doc.font("Helvetica").fontSize(8).fillColor("#666")
       .text(`[QR: ${value}]`, x, y, { width: w, height: h, align: "center" });
   }
