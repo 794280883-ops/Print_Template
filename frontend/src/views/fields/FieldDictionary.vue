@@ -39,6 +39,11 @@
           <template v-if="column.key === 'type'">
             {{ TYPE_LABEL[record.type] || record.type }}
           </template>
+          <template v-else-if="column.key === 'source'">
+            <a-tag :color="record.system ? 'cyan' : 'default'">
+              {{ record.system ? '系统' : '业务' }}
+            </a-tag>
+          </template>
           <template v-else-if="column.key === 'required'">
             <a-tag :color="record.required ? 'red' : 'default'">
               {{ record.required ? '必填' : '选填' }}
@@ -73,7 +78,7 @@
               <template v-else>
                 <a-button size="small" type="link" @click="handleEnableField(record)" v-permission="'field:enable'">启用</a-button>
               </template>
-              <a-popconfirm v-if="hasPermission('field:delete') && !isModulePrimaryField(record.code)" title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
+              <a-popconfirm v-if="hasPermission('field:delete') && !record.system && !isModulePrimaryField(record.code)" title="确认删除该字段? 此操作不可恢复" @confirm="handleDeleteField(record)">
                 <a-button size="small" danger type="link">删除</a-button>
               </a-popconfirm>
             </a-space>
@@ -122,13 +127,13 @@
     >
       <a-form layout="vertical">
         <a-form-item label="字段编码" required>
-          <a-input v-model:value="fieldForm.code" :disabled="fieldEditing" placeholder="例如 palletCode" />
+          <a-input v-model:value="fieldForm.code" :disabled="fieldEditing || fieldForm.system" placeholder="例如 palletCode" />
         </a-form-item>
         <a-form-item label="中文名称" required>
           <a-input v-model:value="fieldForm.name" placeholder="例如 托盘编码" />
         </a-form-item>
         <a-form-item label="字段类型" required>
-          <a-select v-model:value="fieldForm.type">
+          <a-select v-model:value="fieldForm.type" :disabled="fieldForm.system">
             <a-select-option value="string">字符</a-select-option>
             <a-select-option value="number">数值</a-select-option>
             <a-select-option value="integer">整数</a-select-option>
@@ -137,22 +142,23 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-checkbox v-model:checked="fieldForm.required">必填</a-checkbox>
-            <a-checkbox v-model:checked="fieldForm.searchable" :disabled="isCodeField">启用查询</a-checkbox>
+            <a-checkbox v-model:checked="fieldForm.required" :disabled="fieldForm.system">必填</a-checkbox>
+            <a-checkbox v-model:checked="fieldForm.searchable" :disabled="isCodeField || fieldForm.system">启用查询</a-checkbox>
             <a-checkbox v-model:checked="fieldForm.sortable">支持排序</a-checkbox>
-            <a-checkbox v-model:checked="fieldForm.isUnique">校验唯一性</a-checkbox>
+            <a-checkbox v-model:checked="fieldForm.isUnique" :disabled="fieldForm.system">校验唯一性</a-checkbox>
           </a-space>
           <div v-if="isCodeField" style="font-size:12px;color:#999;margin-top:4px">业务编码字段默认启用查询，不可取消</div>
+          <div v-if="fieldForm.system" style="font-size:12px;color:#999;margin-top:4px">系统字段只允许调整名称、排序、是否显示和是否支持排序</div>
           <div v-if="fieldForm.isUnique" style="font-size:12px;color:#999;margin-top:4px">勾选后新增/编辑业务数据时，该字段与其他唯一性字段组合校验（AND）</div>
         </a-form-item>
         <a-form-item label="示例值">
-          <a-input v-model:value="fieldForm.example" />
+          <a-input v-model:value="fieldForm.example" :disabled="fieldForm.system" />
         </a-form-item>
         <a-form-item label="排序" required>
           <a-input-number v-model:value="fieldForm.sortNo" :min="0" style="width:100%" />
         </a-form-item>
         <a-form-item label="说明">
-          <a-textarea v-model:value="fieldForm.desc" :rows="2" />
+          <a-textarea v-model:value="fieldForm.desc" :rows="2" :disabled="fieldForm.system" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -197,6 +203,7 @@ const TYPE_LABEL = { string: '字符', number: '数值', integer: '整数', date
 const columns = ref([
   { title: '中文名称', dataIndex: 'name', key: 'name', resizable: true, width: 140 },
   { title: '字段编码', dataIndex: 'code', key: 'code', resizable: true, width: 180 },
+  { title: '来源', key: 'source', width: 70 },
   { title: '类型', dataIndex: 'type', key: 'type', resizable: true, width: 70 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 70 },
   { title: '可查询', dataIndex: 'searchable', key: 'searchable', width: 70 },
@@ -290,6 +297,7 @@ function emptyFieldForm() {
     example: '',
     desc: '',
     sortNo: null,
+    system: false,
   };
 }
 
@@ -334,6 +342,7 @@ function openEditFieldModal(record) {
     example: record.example || '',
     desc: record.desc || '',
     sortNo: Number(record.sortNo || 0),
+    system: !!record.system,
   };
   fieldModalOpen.value = true;
 }
@@ -419,13 +428,13 @@ async function handleSaveField() {
     const payload = {
       code: form.code.trim(),
       name: form.name.trim(),
-      type: form.type,
-      required: !!form.required,
-      searchable: isCodeField.value ? true : !!form.searchable,
+      type: form.system ? 'integer' : form.type,
+      required: form.system ? false : !!form.required,
+      searchable: form.system ? false : (isCodeField.value ? true : !!form.searchable),
       sortable: !!form.sortable,
-      isUnique: !!form.isUnique,
-      example: form.example.trim(),
-      desc: form.desc.trim(),
+      isUnique: form.system ? false : !!form.isUnique,
+      example: form.system ? '' : form.example.trim(),
+      desc: form.system ? form.desc : form.desc.trim(),
       sortNo: Number(form.sortNo || 0),
     };
     if (fieldEditing.value) {

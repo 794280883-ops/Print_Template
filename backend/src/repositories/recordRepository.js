@@ -55,7 +55,9 @@ export async function search(moduleCode, { keyword, fieldFilters = {}, page = 1,
   let orderClause = "ORDER BY updated_at DESC";
   if (isAllowedSortField(sortField, allowedSortFields) && sortDir) {
     const dir = sortDir.toUpperCase() === "ASC" ? "ASC" : "DESC";
-    orderClause = `ORDER BY JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${sortField}"')) ${dir}`;
+    orderClause = sortField === "printCount"
+      ? `ORDER BY print_count ${dir}`
+      : `ORDER BY JSON_UNQUOTE(JSON_EXTRACT(record_data, '$."${sortField}"')) ${dir}`;
   }
 
   const [rows] = await pool.query(
@@ -192,13 +194,28 @@ export async function removeById(dbId) {
   return result.affectedRows;
 }
 
+export async function incrementPrintCountByIds(ids = []) {
+  if (!ids.length) return 0;
+  const placeholders = ids.map(() => "?").join(", ");
+  const [result] = await pool.query(
+    `UPDATE business_record
+     SET print_count = print_count + 1
+     WHERE id IN (${placeholders})`,
+    ids,
+  );
+  return result.affectedRows;
+}
+
 function toDto(row) {
+  const fields = typeof row.record_data === "string" ? JSON.parse(row.record_data) : row.record_data;
+  const printCount = Number(row.print_count || 0);
   return {
     _dbId: row.id,
     id: `${row.module_code}:${row.record_code}`,
     businessType: row.module_code,
     businessCode: row.record_code,
-    fields: typeof row.record_data === "string" ? JSON.parse(row.record_data) : row.record_data,
+    printCount,
+    fields: { ...fields, printCount },
     updatedAt: row.updated_at || "",
   };
 }

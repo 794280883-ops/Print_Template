@@ -1,7 +1,7 @@
 import * as businessModuleRepository from "../repositories/businessModuleRepository.js";
 import * as fieldRepository from "../repositories/fieldRepository.js";
 import { withTransaction } from "../config/db.js";
-import { normalizeField } from "./fieldService.js";
+import { ensurePrintCountSystemField, normalizeField } from "./fieldService.js";
 import { appError } from "../utils/response.js";
 
 const BUILT_IN_MODULES = new Set(["LOCATION", "CONTAINER", "PRODUCT"]);
@@ -45,6 +45,7 @@ export async function createModule(payload = {}) {
       for (const field of fields) {
         await fieldRepository.upsertField(code, field, connection);
       }
+      await ensurePrintCountSystemField(code, connection);
       return toDto(saved);
     });
   } catch (error) {

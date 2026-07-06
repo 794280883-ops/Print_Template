@@ -10,6 +10,9 @@ const schema = {
     { code: "locationCode" },
     { code: "warehouseCode" },
   ],
+  systemFields: [
+    { code: "printCount", sortable: true },
+  ],
 };
 
 test("resolveRecordSortOptions keeps sortable fields", () => {
@@ -30,6 +33,25 @@ test("resolveRecordSortOptions falls back when field contains unsafe characters"
   assert.deepEqual(
     resolveRecordSortOptions({ sortField: 'locationCode")) DESC --', sortDir: "DESC" }, schema),
     { sortField: "locationCode", sortDir: "ASC" },
+  );
+});
+
+test("resolveRecordSortOptions allows sortable system fields", () => {
+  assert.deepEqual(
+    resolveRecordSortOptions({ sortField: "printCount", sortDir: "DESC" }, schema),
+    { sortField: "printCount", sortDir: "DESC" },
+  );
+});
+
+test("getBusinessInputFields excludes system fields", () => {
+  assert.deepEqual(
+    recordService.getBusinessInputFields({
+      fields: [
+        { code: "locationCode" },
+        { code: "printCount", system: true },
+      ],
+    }),
+    [{ code: "locationCode" }],
   );
 });
 

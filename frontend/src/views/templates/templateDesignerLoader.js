@@ -11,5 +11,6 @@ export async function loadTemplateForDesigner(id, { getTemplate, fetchFields }) 
 
 export function resolveTemplateFields(templateType, fieldsByType, fallbackFields) {
   const normalizedType = normalizeTemplateType(templateType);
-  return fieldsByType[normalizedType] || fallbackFields[normalizedType] || [];
+  return (fieldsByType[normalizedType] || fallbackFields[normalizedType] || [])
+    .filter((field) => field.bindableInTemplate !== false);
 }

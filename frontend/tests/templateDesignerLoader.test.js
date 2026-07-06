@@ -29,3 +29,15 @@ test("resolves fields by normalized template type", () => {
     [{ code: "productCode" }],
   );
 });
+
+test("resolveTemplateFields excludes fields that cannot bind in templates", () => {
+  assert.deepEqual(
+    resolveTemplateFields("LOCATION", {
+      LOCATION: [
+        { code: "locationCode", bindableInTemplate: true },
+        { code: "printCount", bindableInTemplate: false, system: true },
+      ],
+    }, {}),
+    [{ code: "locationCode", bindableInTemplate: true }],
+  );
+});

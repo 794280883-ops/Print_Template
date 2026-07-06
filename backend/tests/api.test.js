@@ -56,6 +56,17 @@ async function login(port, username = "admin", password = "123456") {
   return body.data.token;
 }
 
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+    server.closeAllConnections?.();
+    server.closeIdleConnections?.();
+  });
+}
+
 async function createNoRoleUser(username, password = "123456") {
   const passwordHash = await bcrypt.hash(password, 10);
   await pool.query(
@@ -95,7 +106,7 @@ test("GET /api/v1/health returns standard response", async () => {
     assert.equal(body.code, 0);
     assert.equal(body.data.service, "ok");
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -128,7 +139,7 @@ test("protected template APIs require login and permission", async () => {
     assert.equal(body.code, 40300);
   } finally {
     await pool.query("DELETE FROM sys_user WHERE username = ?", [username]);
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -142,7 +153,7 @@ test("GET /api/v1/template/fields/location returns field dictionary", async () =
     assert.equal(body.code, 0);
     assert.ok(Array.isArray(body.data));
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -156,7 +167,7 @@ test("GET /api/v1/health/db returns test database health response", { skip: !pro
     assert.equal(body.code, 0);
     assert.equal(body.data.database, "ok");
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -172,7 +183,7 @@ test("GET /api/v1/business-data/types returns configured business types", async 
       assert.ok(body.data.some((item) => item.code === code));
     }
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -195,7 +206,7 @@ test("GET /api/v1/business-modules returns enabled module configurations", async
       assert.equal(item.dataLabel, expected.dataLabel);
     }
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -230,9 +241,10 @@ test("POST /api/v1/business-modules creates custom module with fields", async ()
     const fieldsResponse = await fetch(`http://127.0.0.1:${port}/api/v1/template/fields/${moduleCode}`);
     const fieldsBody = await fieldsResponse.json();
     assert.equal(fieldsResponse.status, 200);
-    assert.deepEqual(fieldsBody.data.map((item) => item.code), ["testCode", "testName"]);
+    assert.deepEqual(fieldsBody.data.map((item) => item.code), ["testCode", "testName", "printCount"]);
+    assert.equal(fieldsBody.data.find((item) => item.code === "printCount")?.system, true);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -273,7 +285,7 @@ test("DELETE /api/v1/business-modules/:code disables custom module from module a
     assert.equal(typesResponse.status, 200);
     assert.equal(typesBody.data.some((item) => item.code === moduleCode), false);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -323,6 +335,7 @@ test("POST /api/v1/business-modules restores a disabled module and its primary f
     const fieldsBody = await fieldsResponse.json();
     assert.deepEqual(fieldsBody.data.map((item) => ({ code: item.code, name: item.name, enabled: item.enabled })), [
       { code: "restoreCode", name: "恢复后编码", enabled: true },
+      { code: "printCount", name: "打印次数", enabled: true },
     ]);
 
     const modulesBody = await (await fetch(`http://127.0.0.1:${port}/api/v1/business-modules`)).json();
@@ -331,7 +344,7 @@ test("POST /api/v1/business-modules restores a disabled module and its primary f
     const typesBody = await (await fetch(`http://127.0.0.1:${port}/api/v1/business-data/types`)).json();
     assert.equal(typesBody.data.some((item) => item.code === moduleCode && item.label === "恢复后数据"), true);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -345,7 +358,7 @@ test("DELETE /api/v1/business-modules/:code rejects built-in module", async () =
     assert.equal(body.code, 40000);
     assert.match(body.message, /系统内置模块/);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -392,7 +405,7 @@ test("PUT /api/v1/business-modules/:code updates module display names", async ()
     assert.equal(item.templateLabel, "新模板类型");
     assert.equal(item.dataLabel, "新业务数据");
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -427,7 +440,7 @@ test("PUT /api/v1/business-modules/:code/fields/:fieldCode updates field metadat
     assert.equal(body.data.name, "新名称");
     assert.equal(body.data.sortNo, 5);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -441,7 +454,7 @@ test("POST /api/v1/business-modules/:code/fields/:fieldCode/disable rejects prim
     assert.equal(body.code, 40002);
     assert.match(body.message, /主编码字段不允许停用或删除/);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -499,7 +512,7 @@ test("custom module business data uses business_data JSON storage", async () => 
     assert.equal(response.status, 200);
     assert.equal(body.data.deleted, true);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -515,7 +528,7 @@ test("business data import template returns headers without comment", async () =
     assert.equal(worksheet.A1.v, "库位编码");
     assert.equal(worksheet.A1.c, undefined);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -556,7 +569,7 @@ test("business data primary field allows duplicates and supports code changes", 
       changedCode,
       `${recordCode}_CHANGED`,
     ]);
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -610,7 +623,7 @@ test("business data import allows duplicate and existing primary values", async 
       duplicateCode,
       validCode,
     ]);
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -652,7 +665,7 @@ test("POST /api/v1/print/pdf rejects mismatched business type", async () => {
     assert.equal(body.code, 40005);
     assert.match(body.message, /业务类型与模板类型不一致/);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -665,7 +678,7 @@ test("GET /api/v1/business-data/search rejects invalid business type", async () 
     assert.equal(response.status, 400);
     assert.equal(body.code, 40000);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -684,6 +697,6 @@ test("POST /api/v1/templates/1/enable enables seeded template when DB tests are 
     assert.equal(body.code, 0);
     assert.equal(body.data.status, "enabled");
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });

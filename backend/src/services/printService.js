@@ -1,4 +1,5 @@
 import * as printRepository from "../repositories/printRepository.js";
+import * as recordRepository from "../repositories/recordRepository.js";
 import { getTemplate } from "./templateService.js";
 import { generateTemplatePdf, validateTemplateBarcodeValues } from "./pdfGenerator.js";
 import { appError } from "../utils/response.js";
@@ -83,7 +84,27 @@ export async function generatePdf(payload) {
     operator: payload.operator || "Admin",
   });
 
+  await incrementPrintedRecords(rows);
+
   return { pdfBuffer, logEntry, templateName: template.templateName };
+}
+
+export function collectPrintedRecordIds(rows = []) {
+  const ids = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const id = Number(row?._dbId);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+export async function incrementPrintedRecords(rows = [], _options = {}, repository = recordRepository) {
+  const ids = collectPrintedRecordIds(rows);
+  if (!ids.length) return 0;
+  return repository.incrementPrintCountByIds(ids);
 }
 
 function assertTemplateEnabled(template) {

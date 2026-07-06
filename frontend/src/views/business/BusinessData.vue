@@ -73,14 +73,14 @@
         </template>
       </a-table>
       <div class="page-bar">
-        <span class="page-total">共 {{ total }} 条</span>
+        <span class="page-total">共 {{ Number(total) || 0 }} 条</span>
         <a-pagination
           v-model:current="filters.page"
           v-model:pageSize="filters.pageSize"
-          :total="total"
+          :total="Number(total) || 0"
           :show-size-changer="true"
 
-          :page-size-options="['10', '20', '50', '100']"
+          :page-size-options="[10, 20, 50, 100]"
           size="small"
           @change="fetchData"
           @showSizeChange="onPageSizeChange"
@@ -96,7 +96,7 @@
     <!-- Edit Modal -->
     <a-modal v-model:open="editing" title="编辑业务数据" cancel-text="取消" ok-text="确认" @ok="handleEditSave" width="520px" :confirm-loading="saving">
       <a-form layout="vertical" v-if="editRecord">
-        <template v-for="f in currentFields" :key="f.code">
+        <template v-for="f in businessInputFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
             <a-input-number v-if="f.type === 'integer'" v-model:value="editFields[f.code]" :precision="0" style="width:100%" />
             <a-input-number v-else-if="f.type === 'number'" v-model:value="editFields[f.code]" style="width:100%" />
@@ -110,7 +110,7 @@
     <!-- Create Modal -->
     <a-modal v-model:open="creating" title="新增业务数据" cancel-text="取消" ok-text="确认" @ok="handleCreateSave" width="520px" :confirm-loading="saving">
       <a-form layout="vertical">
-        <template v-for="f in currentFields" :key="f.code">
+        <template v-for="f in businessInputFields" :key="f.code">
           <a-form-item :label="f.name" :required="f.required">
             <a-select v-if="f.type === 'select' && f.enumOptions" v-model:value="createFields[f.code]" allow-clear :placeholder="'请选择' + f.name">
               <a-select-option v-for="opt in f.enumOptions" :key="opt" :value="opt">{{ opt }}</a-select-option>
@@ -209,7 +209,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onActivated, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { listBusinessData, deleteBusinessDataBatch, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
@@ -295,8 +295,12 @@ const currentFields = computed(() => {
     .sort((a, b) => (a.sortNo || 0) - (b.sortNo || 0));
 });
 
+const businessInputFields = computed(() => {
+  return currentFields.value.filter((field) => !field.system);
+});
+
 const searchableFields = computed(() => {
-  return currentFields.value.filter((f) => f.searchable && f.code !== codeFieldCode.value);
+  return businessInputFields.value.filter((f) => f.searchable && f.code !== codeFieldCode.value);
 });
 
 const codeFieldCode = computed(() => currentModule.value?.codeField || currentFields.value[0]?.code || '');
@@ -343,6 +347,7 @@ async function fetchFields(type) {
 }
 
 async function fetchData() {
+  await fetchFields(filters.type);
   loading.value = true;
   try {
     const result = await listBusinessData(filters.type, {
@@ -365,8 +370,8 @@ async function fetchData() {
 function handleSearch() { filters.page = 1; fetchData(); }
 function handleReset() { filters.keyword = ''; Object.keys(fieldFilters).forEach(k => delete fieldFilters[k]); filters.page = 1; fetchData(); }
 function handleTableChange(pag, _filters, sorter) {
-  filters.page = pag.current;
-  filters.pageSize = pag.pageSize;
+  filters.page = Number(pag.current) || 1;
+  filters.pageSize = Number(pag.pageSize) || 20;
   if (sorter && sorter.order) {
     filters.sortField = sorter.field || codeFieldCode.value;
     filters.sortDir = sorter.order === 'ascend' ? 'ASC' : 'DESC';
@@ -377,17 +382,17 @@ function handleTableChange(pag, _filters, sorter) {
   fetchData();
 }
 function onPageSizeChange(current, size) {
-  filters.pageSize = size;
+  filters.pageSize = Number(size) || 20;
   filters.page = 1;
   fetchData();
 }
 function handleCreate() {
   createFields.value = {};
-  for (const f of currentFields.value) createFields.value[f.code] = '';
+  for (const f of businessInputFields.value) createFields.value[f.code] = '';
   creating.value = true;
 }
 async function handleCreateSave() {
-  const codeField = currentFields.value.find((field) => field.code === codeFieldCode.value) || currentFields.value[0];
+  const codeField = businessInputFields.value.find((field) => field.code === codeFieldCode.value) || businessInputFields.value[0];
   if (codeField && !createFields.value[codeField.code]?.trim()) {
     message.error(`${codeField.name}不能为空`);
     return;
@@ -539,9 +544,14 @@ async function doPrintRecord() {
   }
   printLoading.value = true;
   try {
-    const rows = printRecords.value.map(item => (item.fields ? { ...item.fields } : item));
+    const rows = printRecords.value.map(item => ({
+      ...(item.fields || item),
+      _dbId: item._dbId,
+      businessCode: item.businessCode,
+    }));
     const blob = await downloadPrintPdf({
       templateId: selectedTemplateId.value,
+      businessType: filters.type,
       rows,
       copies: printCopies.value,
     });
@@ -553,6 +563,8 @@ async function doPrintRecord() {
     window.URL.revokeObjectURL(url);
     message.success('打印文件已下载');
     printVisible.value = false;
+    selectedRowKeys.value = [];
+    fetchData();
   } catch (err) {
     message.error('打印失败: ' + (err.message || ''));
   } finally {
@@ -563,14 +575,14 @@ function handleEdit(record) {
   const original = rows.value.find((r) => r.id === record.id) || record;
   editRecord.value = original;
   editFields.value = { ...(original.fields || {}) };
-  for (const field of currentFields.value) {
+  for (const field of businessInputFields.value) {
     if (editFields.value[field.code] === undefined) editFields.value[field.code] = '';
   }
   editing.value = true;
 }
 
 async function handleEditSave() {
-  const codeField = currentFields.value.find((field) => field.code === codeFieldCode.value) || currentFields.value[0];
+  const codeField = businessInputFields.value.find((field) => field.code === codeFieldCode.value) || businessInputFields.value[0];
   if (codeField && !editFields.value[codeField.code]?.trim()) {
     message.error(`${codeField.name}不能为空`);
     return;
@@ -617,8 +629,12 @@ watch(() => filters.type, async () => {
 });
 onMounted(async () => {
   await fetchModules();
-  await fetchFields(filters.type);
   filters.sortField = codeFieldCode.value || filters.sortField;
+  fetchData();
+});
+
+// keep-alive 激活时刷新字段配置和数据
+onActivated(() => {
   fetchData();
 });
 </script>

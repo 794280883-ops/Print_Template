@@ -97,7 +97,12 @@ function getAllowedSortFields(schema = {}) {
   return [
     schema.recordCodeField?.code,
     ...(schema.sortableFields || []).map((field) => field.code),
+    ...(schema.systemFields || []).filter((field) => field.sortable).map((field) => field.code),
   ].filter(Boolean);
+}
+
+export function getBusinessInputFields(schema = {}) {
+  return (schema.fields || []).filter((field) => !field.system);
 }
 
 export async function createRecord(payload = {}) {
@@ -109,7 +114,7 @@ export async function createRecord(payload = {}) {
   if (!recordCode) throw appError(`${schema.recordCodeField.name}必填`, 40000, 400);
 
   const recordData = {};
-  for (const f of schema.fields) {
+  for (const f of getBusinessInputFields(schema)) {
     recordData[f.code] = String(fields[f.code] ?? "").trim();
   }
 
@@ -135,7 +140,7 @@ export async function updateRecord(bizType, bizCode, payload = {}) {
   if (!newRecordCode) throw appError(`${schema.recordCodeField.name}必填`, 40000, 400);
 
   const recordData = {};
-  for (const f of schema.fields) {
+  for (const f of getBusinessInputFields(schema)) {
     recordData[f.code] = f.code === schema.recordCodeField.code
       ? newRecordCode
       : String(fields[f.code] ?? "").trim();
@@ -190,7 +195,7 @@ export async function deleteRecords(_bizType, payload = {}, repository = recordR
 
 export async function generateImportTemplate(bizType) {
   const schema = await compileSchema(bizType);
-  const headers = schema.fields.map((f) => f.name);
+  const headers = getBusinessInputFields(schema).map((f) => f.name);
   const worksheet = XLSX.utils.aoa_to_sheet([headers]);
   worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
   const workbook = XLSX.utils.book_new();
@@ -209,7 +214,8 @@ export async function importRecords(bizType, fileBuffer) {
   if (rows.length < 2) throw appError("Excel 文件中没有数据行", 40000, 400);
 
   const headerRow = rows[0].map((h) => String(h || "").trim());
-  const colFieldMap = headerRow.map((h) => schema.fields.find((f) => f.name === h) || null);
+  const inputFields = getBusinessInputFields(schema);
+  const colFieldMap = headerRow.map((h) => inputFields.find((f) => f.name === h) || null);
 
   const codeColIdx = colFieldMap.findIndex((f) => f && f.code === schema.recordCodeField.code);
   if (codeColIdx < 0) throw appError(`Excel 表头中未找到"${schema.recordCodeField.name}"列`, 40000, 400);

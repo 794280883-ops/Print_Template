@@ -1,5 +1,6 @@
 import * as businessModuleRepository from "../repositories/businessModuleRepository.js";
 import * as fieldRepository from "../repositories/fieldRepository.js";
+import { isSystemFieldCode } from "./fieldService.js";
 import { appError } from "../utils/response.js";
 
 export async function compileSchema(moduleCode) {
@@ -18,16 +19,19 @@ export async function compileSchema(moduleCode) {
     sortable: Boolean(r.sortable),
     unique: Boolean(r.is_unique),
     bindableInTemplate: r.bindable_in_template !== 0,
+    system: isSystemFieldCode(r.field_code),
     enabled: Boolean(r.enabled),
   })).sort((a, b) => a.sortNo - b.sortNo);
 
   const fields = allFields.filter((f) => f.enabled);
+  const businessFields = fields.filter((f) => !f.system);
+  const systemFields = fields.filter((f) => f.system);
 
   // 主编码字段从启用字段中查找，找不到则回退到唯一字段或首个字段
-  let recordCodeField = fields.find((f) => f.code === mod.record_code_field);
+  let recordCodeField = businessFields.find((f) => f.code === mod.record_code_field);
   if (!recordCodeField) {
     // Fallback: use any unique field, or the first enabled field
-    recordCodeField = fields.find((f) => f.unique) || fields[0];
+    recordCodeField = businessFields.find((f) => f.unique) || businessFields[0];
     if (!recordCodeField) throw appError(`模块 ${code} 没有可用字段`, 50000, 500);
     console.warn(`模块 ${code} 的主编码字段 ${mod.record_code_field} 未启用，已回退使用 ${recordCodeField.code}`);
   }
@@ -39,12 +43,14 @@ export async function compileSchema(moduleCode) {
       label: mod.data_label,
       recordCodeField: mod.record_code_field,
     },
-    fields,
+    fields: businessFields,
+    systemFields,
+    displayFields: fields,
     recordCodeField,
-    searchableFields: fields.filter((f) => f.searchable),
-    sortableFields: fields.filter((f) => f.sortable),
-    uniqueFields: fields.filter((f) => f.unique),
-    bindableFields: fields.filter((f) => f.bindableInTemplate),
+    searchableFields: businessFields.filter((f) => f.searchable),
+    sortableFields: businessFields.filter((f) => f.sortable),
+    uniqueFields: businessFields.filter((f) => f.unique),
+    bindableFields: businessFields.filter((f) => f.bindableInTemplate),
   };
 }
 

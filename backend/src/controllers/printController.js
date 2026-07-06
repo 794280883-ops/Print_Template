@@ -82,6 +82,13 @@ export async function downloadPdf(req, res) {
     if (!res.writableEnded) {
       res.end();
     }
+    return;
+  }
+
+  try {
+    await printService.incrementPrintedRecords(rows, { copies });
+  } catch (err) {
+    console.error("Print count update failed:", err.message);
   }
 }
 
