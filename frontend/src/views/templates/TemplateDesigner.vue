@@ -51,7 +51,7 @@
         <div class="tool-section">
           <h3>组件区</h3>
           <div class="component-list">
-            <div v-for="comp in COMPONENTS" :key="comp.type + comp.label"
+            <div v-for="comp in visibleComponents" :key="comp.type + comp.label"
               class="component-btn" draggable="true"
               @dragstart="handleDragStart($event, comp)"
               @click="addElementFromData(comp)"
@@ -100,7 +100,7 @@
               <div v-if="el.type === 'text'" class="el-content">{{ getTextDisplay(el) }}</div>
               <!-- qrcode/barcode -->
               <div v-else-if="el.type === 'qrcode'" class="qr" :title="el.bindField"></div>
-              <div v-else-if="el.type === 'barcode'" class="barcode-box" :title="el.bindField">
+              <div v-else-if="el.type === 'barcode'" class="barcode-box" :title="`${getBarcodeFormatLabel(el)} · ${el.bindField || '未绑定'}`">
                 <div class="barcode"></div>
                 <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, zoom)">
                   {{ getBarcodeHumanText(el) }}
@@ -178,6 +178,11 @@
               <template v-if="selectedElement.type === 'qrcode' || selectedElement.type === 'barcode'">
                 <a-form-item label="绑定字段"><a-select v-model:value="selectedElement.bindField" data-prop="bindField" @change="onPropChange"><a-select-option value="">请选择字段</a-select-option><a-select-option v-for="f in currentFields" :key="f.code" :value="f.code">{{ f.name }}</a-select-option></a-select></a-form-item>
                 <template v-if="selectedElement.type === 'barcode'">
+                  <a-form-item label="码制">
+                    <a-select v-model:value="selectedElement.barcodeFormat" data-prop="barcodeFormat" @change="onPropChange">
+                      <a-select-option v-for="format in SELECTABLE_BARCODE_FORMATS" :key="format.value" :value="format.value">{{ format.label }}</a-select-option>
+                    </a-select>
+                  </a-form-item>
                   <a-row :gutter="8">
                     <a-col :span="12"><a-form-item><a-checkbox v-model:checked="selectedElement.showHumanText" data-prop="showHumanText" @change="onPropChange">显示文字</a-checkbox></a-form-item></a-col>
                     <a-col :span="12"><a-form-item label="文字字号 px"><a-input-number v-model:value="selectedElement.humanTextFontSize" :min="6" :step="1" style="width:100%" @change="onPropChange" /></a-form-item></a-col>
@@ -238,7 +243,7 @@
               :style="getPreviewElementStyle(el)">
               <div v-if="el.type === 'text'" class="el-content">{{ getTextDisplay(el) }}</div>
               <div v-else-if="el.type === 'qrcode'" class="qr" :title="el.bindField"></div>
-              <div v-else-if="el.type === 'barcode'" class="barcode-box" :title="el.bindField">
+              <div v-else-if="el.type === 'barcode'" class="barcode-box" :title="`${getBarcodeFormatLabel(el)} · ${el.bindField || '未绑定'}`">
                 <div class="barcode"></div>
                 <div v-if="isBarcodeHumanTextVisible(el)" class="barcode-human-text" :style="getBarcodeHumanTextStyle(el, previewZoom)">
                   {{ getBarcodeHumanText(el) }}
@@ -274,7 +279,7 @@ import {
   EyeOutlined, ArrowLeftOutlined, DeleteOutlined,
 } from '@ant-design/icons-vue';
 import { getTemplate, updateTemplate, listFields } from '../../api/templateApi.js';
-import { COMPONENTS, FIELD_DICT, PX_PER_MM, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
+import { BARCODE_FORMATS, COMPONENTS, DEFAULT_BARCODE_FORMAT, FIELD_DICT, PX_PER_MM, SELECTABLE_BARCODE_FORMATS, TYPE_LABEL, STATUS_LABEL } from '../../data/constants.js';
 import { validateTemplateDsl } from '../../services/validationService.js';
 import { resizeElementFromHandle } from '../../services/resizeService.js';
 import { getBarcodeHumanText, getBarcodeHumanTextFontSize, isBarcodeHumanTextVisible } from '../../services/barcodeHumanTextService.js';
@@ -346,6 +351,11 @@ const selectedElement = computed(() => {
 const currentFields = computed(() => {
   if (!template.value) return [];
   return resolveTemplateFields(template.value.templateType, fieldsByType.value, FIELD_DICT);
+});
+
+const visibleComponents = computed(() => {
+  const templateType = normalizeTemplateType(template.value?.templateType);
+  return COMPONENTS.filter(comp => !comp.templateTypes || comp.templateTypes.includes(templateType));
 });
 
 const canvasStyle = computed(() => {
@@ -473,6 +483,10 @@ function getBarcodeHumanTextStyle(el, scale) {
     fontSize: `${getBarcodeHumanTextFontSize(el, scale)}px`,
     marginTop: `${2 * Number(scale || 1)}px`,
   };
+}
+
+function getBarcodeFormatLabel(el) {
+  return BARCODE_FORMATS.find(format => format.value === (el.barcodeFormat || DEFAULT_BARCODE_FORMAT))?.label || 'Code128';
 }
 
 function getTextDisplay(el) {
@@ -779,6 +793,7 @@ async function loadDesignerTemplate(id) {
 
 function normalizeBarcodeElementOptions(el) {
   if (el?.type !== 'barcode') return;
+  if (!el.barcodeFormat) el.barcodeFormat = DEFAULT_BARCODE_FORMAT;
   if (el.showHumanText === undefined) el.showHumanText = true;
   if (!el.humanTextFontSize) el.humanTextFontSize = 8;
 }

@@ -5,6 +5,76 @@ import { Buffer } from "node:buffer";
 import { env } from "../config/env.js";
 import { cssPxToPdfPt, elementBoxToPdfPoints, getBarcodeLayout, getTextLayout, MM_TO_PT } from "./pdfLayout.js";
 
+const BARCODE_BCID_MAP = {
+  code128: "code128",
+  upca: "upca",
+};
+
+export function resolveBarcodeBcid(format) {
+  return BARCODE_BCID_MAP[format || "code128"] || "code128";
+}
+
+const BARCODE_FORMAT_LABELS = {
+  code128: "Code128",
+  upca: "UPC-A",
+};
+
+const BARCODE_FORMAT_HINTS = {
+  upca: "UPC-A 只能使用 11 或 12 位数字",
+};
+
+function getElementCacheKey(element) {
+  return element.id || element.element_uid;
+}
+
+export function getBarcodeFormatLabel(format) {
+  return BARCODE_FORMAT_LABELS[format || "code128"] || BARCODE_FORMAT_LABELS.code128;
+}
+
+export async function validateTemplateBarcodeValues(template, dataRows = []) {
+  const elements = (template?.elements || []).filter((el) => el.type === "barcode");
+  if (!elements.length || !dataRows.length) return [];
+
+  const checked = new Set();
+  const issues = [];
+  for (const el of elements) {
+    const format = el.barcodeFormat || "code128";
+    if (!BARCODE_BCID_MAP[format]) {
+      issues.push({ elementId: el.id, bindField: el.bindField, rowIndex: 0, barcodeFormat: format, value: "", message: `条码码制不支持：${format}` });
+      continue;
+    }
+    const bcid = resolveBarcodeBcid(format);
+    const label = getBarcodeFormatLabel(format);
+    for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
+      const value = String(dataRows[rowIndex]?.[el.bindField] ?? "");
+      const key = `${el.id}|${bcid}|${value}`;
+      if (checked.has(key)) continue;
+      checked.add(key);
+
+      if (!value) {
+        issues.push({ elementId: el.id, bindField: el.bindField, rowIndex, barcodeFormat: format, value, message: `${label} 绑定字段 ${el.bindField} 的值为空` });
+        continue;
+      }
+
+      try {
+        await bwipjs.toBuffer({
+          bcid,
+          text: value,
+          scale: 1,
+          height: 1,
+          includetext: false,
+          paddingwidth: 0,
+          paddingheight: 0,
+        });
+      } catch {
+        const hint = BARCODE_FORMAT_HINTS[format] || `${label} 无法编码当前值`;
+        issues.push({ elementId: el.id, bindField: el.bindField, rowIndex, barcodeFormat: format, value, message: `${hint}；当前值：${value}` });
+      }
+    }
+  }
+  return issues;
+}
+
 /**
  * Generate a PDF from a template and data rows.
  *
@@ -134,7 +204,7 @@ async function prerenderBarcode(el, data, rowCache) {
     const heightMm = barcodeBox.h / MM_TO_PT;
     const widthMm = barcodeBox.w / MM_TO_PT;
     const pngBuffer = await bwipjs.toBuffer({
-      bcid: "code128",
+      bcid: resolveBarcodeBcid(el.barcodeFormat),
       text: value,
       scale: 5,
       height: heightMm,
@@ -143,7 +213,7 @@ async function prerenderBarcode(el, data, rowCache) {
       paddingwidth: 0,
       paddingheight: 0,
     });
-    rowCache.set(el.element_uid, { type: "barcode", buffer: pngBuffer, layout, value });
+    rowCache.set(getElementCacheKey(el), { type: "barcode", buffer: pngBuffer, layout, value });
   } catch {
     // skip on error
   }
@@ -161,7 +231,7 @@ async function prerenderQrcode(el, data, rowCache) {
       margin: 1,
       color: { dark: "#000000", light: "#ffffff" },
     });
-    rowCache.set(el.element_uid, { type: "qrcode", buffer: pngBuffer, x, y, w, h, value });
+    rowCache.set(getElementCacheKey(el), { type: "qrcode", buffer: pngBuffer, x, y, w, h, value });
   } catch {
     // skip on error
   }
@@ -263,7 +333,7 @@ function renderText(doc, el, data, x, y, w, h, ensureCjkFont) {
 
 // ── Barcode ─────────────────────────────────────────
 async function renderBarcode(doc, el, data, x, y, w, h, imageCache) {
-  const cacheEntry = imageCache?.get(el.element_uid);
+  const cacheEntry = imageCache?.get(getElementCacheKey(el));
   if (cacheEntry?.type === "barcode") {
     const { buffer, layout } = cacheEntry;
     const barcodeBox = layout.barcodeBox;
@@ -293,7 +363,7 @@ async function renderBarcode(doc, el, data, x, y, w, h, imageCache) {
     const heightMm = barcodeBox.h / MM_TO_PT;
     const widthMm = barcodeBox.w / MM_TO_PT;
     const pngBuffer = await bwipjs.toBuffer({
-      bcid: "code128",
+      bcid: resolveBarcodeBcid(el.barcodeFormat),
       text: value,
       scale: 5,
       height: heightMm,
@@ -323,7 +393,7 @@ async function renderBarcode(doc, el, data, x, y, w, h, imageCache) {
 
 // ── QR Code ─────────────────────────────────────────
 async function renderQrcode(doc, el, data, x, y, w, h, imageCache) {
-  const cacheEntry = imageCache?.get(el.element_uid);
+  const cacheEntry = imageCache?.get(getElementCacheKey(el));
   if (cacheEntry?.type === "qrcode") {
     doc.image(cacheEntry.buffer, cacheEntry.x, cacheEntry.y, { width: cacheEntry.w, height: cacheEntry.h });
     return;

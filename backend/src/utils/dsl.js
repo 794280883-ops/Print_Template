@@ -1,4 +1,5 @@
 const SUPPORTED_TYPES = ["text", "qrcode", "barcode", "image", "line", "rect", "checkbox"];
+const SUPPORTED_BARCODE_FORMATS = new Set(["code128", "upca"]);
 
 export function toTemplateDsl(template, elements = []) {
   return {
@@ -86,6 +87,9 @@ export function validateTemplateDsl(template, fieldRows = []) {
     if (element.type === "text" && element.textKind === "field" && !element.bindField) errors.push({ message: "动态文本没有绑定字段", elementId: element.id });
     if (["qrcode", "barcode"].includes(element.type) && !element.bindField) errors.push({ message: `${element.type === "qrcode" ? "二维码" : "条码"}没有绑定字段`, elementId: element.id });
     if (element.bindField && !fieldCodes.has(element.bindField)) errors.push({ message: `字段 ${element.bindField} 不存在于当前模板类型模版字段`, elementId: element.id });
+    if (element.type === "barcode" && element.barcodeFormat && !SUPPORTED_BARCODE_FORMATS.has(element.barcodeFormat)) {
+      errors.push({ message: `条码码制不支持：${element.barcodeFormat}`, elementId: element.id });
+    }
 
     const bounds = getRenderedBounds(element);
     const completelyOut = bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= Number(template.size?.width) || bounds.top >= Number(template.size?.height);

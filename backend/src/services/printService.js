@@ -1,6 +1,6 @@
 import * as printRepository from "../repositories/printRepository.js";
 import { getTemplate } from "./templateService.js";
-import { generateTemplatePdf } from "./pdfGenerator.js";
+import { generateTemplatePdf, validateTemplateBarcodeValues } from "./pdfGenerator.js";
 import { appError } from "../utils/response.js";
 
 /**
@@ -27,6 +27,7 @@ export async function preparePrint(payload) {
   const template = await getTemplate(templateId);
   assertTemplateEnabled(template);
   assertBusinessTypeMatchesTemplate(template, payload.businessType);
+  await assertBarcodeValuesPrintable(template, rows);
 
   // Create print log entry (status will be updated after streaming completes)
   const logEntry = await printRepository.createPrintLog({
@@ -60,6 +61,7 @@ export async function generatePdf(payload) {
   const template = await getTemplate(templateId);
   assertTemplateEnabled(template);
   assertBusinessTypeMatchesTemplate(template, payload.businessType);
+  await assertBarcodeValuesPrintable(template, rows);
 
   // Generate PDF
   const pdfBuffer = await generateTemplatePdf(template, rows, { copies });
@@ -95,4 +97,12 @@ function assertBusinessTypeMatchesTemplate(template, businessType) {
   if (String(businessType).toUpperCase() !== String(template.templateType).toUpperCase()) {
     throw appError("业务类型与模板类型不一致，不能打印", 40005, 400);
   }
+}
+
+async function assertBarcodeValuesPrintable(template, rows) {
+  const issues = await validateTemplateBarcodeValues(template, rows);
+  if (!issues.length) return;
+  const first = issues[0];
+  const more = issues.length > 1 ? `，另有 ${issues.length - 1} 处问题` : "";
+  throw appError(`条码数据不符合码制要求：${first.message}${more}`, 40007, 400, { issues });
 }

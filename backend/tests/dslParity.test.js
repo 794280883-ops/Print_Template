@@ -45,6 +45,29 @@ const cases = [
     },
   },
   {
+    name: "supported barcode formats",
+    template: {
+      templateName: "库位标签",
+      templateType: "LOCATION",
+      size: { width: 100, height: 50 },
+      elements: [
+        { id: "barcode_code128", type: "barcode", x: 4, y: 4, width: 52, height: 16, bindField: "locationCode", barcodeFormat: "code128" },
+        { id: "barcode_upca", type: "barcode", x: 4, y: 22, width: 52, height: 16, bindField: "locationCode", barcodeFormat: "upca" },
+      ],
+    },
+  },
+  {
+    name: "unsupported removed barcode format",
+    template: {
+      templateName: "库位标签",
+      templateType: "LOCATION",
+      size: { width: 100, height: 50 },
+      elements: [
+        { id: "barcode_ean13", type: "barcode", x: 4, y: 4, width: 52, height: 16, bindField: "locationCode", barcodeFormat: "ean13" },
+      ],
+    },
+  },
+  {
     name: "template without code element",
     template: {
       templateName: "库位标签",

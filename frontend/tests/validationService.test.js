@@ -29,3 +29,37 @@ test("validateTemplateDsl allows a 270 degree rotated element when its rendered 
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.warnings, []);
 });
+
+test("validateTemplateDsl accepts supported barcode formats and default legacy barcode format", () => {
+  const formats = [undefined, "code128", "upca"];
+
+  for (const barcodeFormat of formats) {
+    const result = validateTemplateDsl({
+      templateName: "商品条码",
+      templateType: "PRODUCT",
+      size: { width: 80, height: 40 },
+      elements: [
+        { id: `barcode_${barcodeFormat || "default"}`, type: "barcode", x: 4, y: 4, width: 52, height: 16, bindField: "skuCode", barcodeFormat },
+      ],
+    }, productFields);
+
+    assert.equal(result.canPublish, true);
+    assert.deepEqual(result.errors, []);
+  }
+});
+
+test("validateTemplateDsl rejects unsupported barcode format", () => {
+  for (const barcodeFormat of ["pdf417", "ean13", "itf14", "gs1-128"]) {
+    const result = validateTemplateDsl({
+      templateName: "商品条码",
+      templateType: "PRODUCT",
+      size: { width: 80, height: 40 },
+      elements: [
+        { id: `bad_format_${barcodeFormat}`, type: "barcode", x: 4, y: 4, width: 52, height: 16, bindField: "skuCode", barcodeFormat },
+      ],
+    }, productFields);
+
+    assert.equal(result.canPublish, false);
+    assert.match(result.errors[0].message, /条码码制不支持/);
+  }
+});

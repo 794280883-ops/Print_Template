@@ -37,6 +37,40 @@ test("validateTemplateDsl rejects missing barcode field binding", () => {
   assert.match(result.errors[0].message, /没有绑定字段/);
 });
 
+test("validateTemplateDsl accepts supported barcode formats and default legacy barcode format", () => {
+  const formats = [undefined, "code128", "upca"];
+
+  for (const barcodeFormat of formats) {
+    const result = validateTemplateDsl({
+      templateName: "条码模板",
+      templateType: "LOCATION",
+      size: { width: 100, height: 50 },
+      elements: [
+        { id: `barcode_${barcodeFormat || "default"}`, type: "barcode", x: 8, y: 23, width: 52, height: 16, bindField: "locationCode", barcodeFormat },
+      ],
+    }, locationFields);
+
+    assert.equal(result.canPublish, true);
+    assert.deepEqual(result.errors, []);
+  }
+});
+
+test("validateTemplateDsl rejects unsupported barcode format", () => {
+  for (const barcodeFormat of ["pdf417", "ean13", "itf14", "gs1-128"]) {
+    const result = validateTemplateDsl({
+      templateName: "错误模板",
+      templateType: "LOCATION",
+      size: { width: 100, height: 50 },
+      elements: [
+        { id: `bad_format_${barcodeFormat}`, type: "barcode", x: 8, y: 23, width: 52, height: 16, bindField: "locationCode", barcodeFormat },
+      ],
+    }, locationFields);
+
+    assert.equal(result.canPublish, false);
+    assert.match(result.errors[0].message, /条码码制不支持/);
+  }
+});
+
 test("validateTemplateDsl rejects fields outside dictionary", () => {
   const result = validateTemplateDsl({
     templateName: "错误模板",
