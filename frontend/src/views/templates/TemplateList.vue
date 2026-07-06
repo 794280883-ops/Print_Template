@@ -202,7 +202,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onActivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
 import {
@@ -517,6 +517,10 @@ function handleBatchToggleStatus(status) {
 // -- Lifecycle --
 onMounted(() => {
   fetchModules();
+  fetchData();
+});
+// keep-alive 恢复时自动刷新列表（从设计器返回等场景）
+onActivated(() => {
   fetchData();
 });
 </script>

@@ -17,6 +17,14 @@
           size="small"
           style="width:180px"
         />
+        <a-input
+          id="templateRemark"
+          v-model:value="templateRemark"
+          placeholder="备注（选填）"
+          size="small"
+          style="width:200px"
+          @change="onRemarkChange"
+        />
         <span class="designer-size-editor">
           <span class="designer-size-label">宽</span>
           <a-input-number id="templateWidth" v-model:value="templateWidth" :min="1" :step="0.5" size="small" style="width:62px" @change="onSizeChange" />
@@ -289,6 +297,7 @@ const previewVisible = ref(false);
 const templateWidth = ref(100);
 const templateHeight = ref(80);
 const templateName = ref('');
+const templateRemark = ref('');
 const fieldsByType = ref({});
 
 // Canvas refs
@@ -306,6 +315,17 @@ watch(templateName, (val) => {
     template.value.templateName = val;
   }
 });
+// Sync remark
+watch(() => template.value?.remark, (val) => {
+  if (val !== undefined && templateRemark.value !== val) {
+    templateRemark.value = val;
+  }
+});
+function onRemarkChange() {
+  if (template.value) {
+    template.value.remark = templateRemark.value;
+  }
+}
 
 // Drag state (non-reactive, managed via event listeners)
 let dragState = null;
@@ -743,6 +763,7 @@ async function loadDesignerTemplate(id) {
     template.value = tpl;
     templateWidth.value = tpl.size.width;
     templateHeight.value = tpl.size.height;
+    templateRemark.value = tpl.remark || '';
     if (tpl.elements?.length) selectedElementId.value = tpl.elements[0].id;
     else selectedElementId.value = null;
     history.value = [];
