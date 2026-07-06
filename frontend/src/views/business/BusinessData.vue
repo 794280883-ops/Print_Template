@@ -35,7 +35,7 @@
     </a-card>
 
     <!-- Table Card -->
-    <a-card size="small">
+    <a-card ref="tableCardRef" size="small" class="table-card">
       <a-space style="margin-bottom:12px;">
         <a-button type="primary" @click="handleCreate" v-permission="'business:create'">
           <plus-outlined /> 新增
@@ -63,7 +63,7 @@
         :show-sorter-tooltip="false"
         @change="handleTableChange"
         size="middle"
-        :scroll="{ x: 'max-content' }"
+        :scroll="scrollConfig"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === codeFieldCode">
@@ -209,7 +209,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onActivated, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { listBusinessData, deleteBusinessDataBatch, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
@@ -252,6 +252,30 @@ const filters = reactive({ type: 'LOCATION', keyword: '', page: 1, pageSize: 20,
 const fieldFilters = reactive({});
 const total = ref(0);
 const customPageSize = ref(null);
+const tableCardRef = ref(null);
+const tableScrollY = ref(400); // 默认值，ResizeObserver 建立后动态更新
+
+const scrollConfig = computed(() => ({
+  x: 'max-content',
+  y: tableScrollY.value,
+}));
+
+// 表格卡片高度变化时，重新计算表格体可滚动区域高度
+let cardResizeObserver = null;
+function startObserveCardHeight() {
+  if (!tableCardRef.value) return;
+  const cardEl = tableCardRef.value.$el || tableCardRef.value;
+  cardResizeObserver = new ResizeObserver(() => {
+    // 卡片内容高度 减去 按钮栏(~44px) + 分页栏(~56px) + 卡片内边距(~32px)
+    const bodyEl = cardEl.querySelector('.ant-card-body');
+    if (bodyEl) {
+      const cardBodyHeight = bodyEl.clientHeight;
+      const oh = 44 + 56 + 16; // 按钮行 + 分页栏 + 额外留白
+      tableScrollY.value = Math.max(200, cardBodyHeight - oh);
+    }
+  });
+  cardResizeObserver.observe(cardEl);
+}
 
 function applyCustomPageSize() {
   const size = Number(customPageSize.value);
@@ -642,11 +666,23 @@ onMounted(async () => {
   await fetchModules();
   filters.sortField = codeFieldCode.value || filters.sortField;
   fetchData();
+  await nextTick();
+  startObserveCardHeight();
+});
+
+onUnmounted(() => {
+  if (cardResizeObserver) {
+    cardResizeObserver.disconnect();
+    cardResizeObserver = null;
+  }
 });
 
 // keep-alive 激活时刷新字段配置和数据
 onActivated(() => {
   fetchData();
+  nextTick(() => {
+    startObserveCardHeight();
+  });
 });
 </script>
 
@@ -654,8 +690,36 @@ onActivated(() => {
 .search-form :deep(.ant-form-item) {
   margin-bottom: 12px;
 }
-.business-data { display: flex; flex-direction: column; gap: 12px; }
-.filter-card { background: linear-gradient(180deg, #fbfdff 0%, #f6f9fd 100%); }
+.business-data {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 112px);
+}
+.filter-card { background: linear-gradient(180deg, #fbfdff 0%, #f6f9fd 100%); flex-shrink: 0; }
+.table-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.table-card :deep(.ant-card-body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.table-card :deep(.ant-table-wrapper) {
+  flex: 1;
+  min-height: 0;
+}
+/* 浏览器级虚拟渲染：跳过视口外行的布局和绘制 */
+.table-card :deep(.ant-table-tbody > tr) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 45px;
+}
 
 .tpl-option {
   padding: 8px 10px;
