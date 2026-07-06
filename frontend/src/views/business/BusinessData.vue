@@ -370,6 +370,7 @@ async function fetchData() {
     });
     rows.value = result.rows || [];
     total.value = result.total || 0;
+    selectedRowKeys.value = [];
   } catch (e) {
     message.error('加载失败: ' + (e.message || ''));
   } finally {
