@@ -27,26 +27,25 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-INSERT INTO print_field_dict
-  (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable, bindable_in_template, is_unique)
-SELECT
-  module_code,
-  'printCount',
-  '打印次数',
-  'integer',
-  NULL,
-  0,
-  '系统字段：统计业务数据成功打印次数',
-  9999,
-  1,
-  0,
-  1,
-  0,
-  0
-FROM print_business_module
-ON DUPLICATE KEY UPDATE
-  field_type = 'integer',
-  is_required = 0,
-  searchable = 0,
-  bindable_in_template = 0,
-  is_unique = 0;
+SET @print_count_field_exists := (
+    SELECT COUNT(*) FROM print_field_dict
+    WHERE field_code = 'printCount'
+    LIMIT 1
+);
+SET @sql := IF(@print_count_field_exists = 0,
+    'INSERT INTO print_field_dict
+       (module_code, field_code, field_name, field_type, example_value, is_required, description, sort_no, enabled, searchable, sortable, bindable_in_template, is_unique)
+     SELECT
+       module_code, ''printCount'', ''打印次数'', ''integer'', NULL, 0, ''系统字段：统计业务数据成功打印次数'', 9999, 1, 0, 1, 0, 0
+     FROM print_business_module
+     ON DUPLICATE KEY UPDATE
+       field_type = ''integer'',
+       is_required = 0,
+       searchable = 0,
+       bindable_in_template = 0,
+       is_unique = 0',
+    'SELECT "printCount system field already seeded, skip" AS msg'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
