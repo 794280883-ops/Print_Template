@@ -266,7 +266,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onActivated, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -803,6 +803,13 @@ async function fetchFields(templateType) {
     if (!FIELD_DICT[normalizedType]) message.warning('模板字段加载失败');
   }
 }
+
+// keep-alive 恢复时自动刷新模版字段列表（从字段管理处返回等场景）
+onActivated(() => {
+  if (template.value?.templateType) {
+    fetchFields(template.value.templateType);
+  }
+});
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown);
