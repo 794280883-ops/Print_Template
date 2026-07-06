@@ -80,7 +80,7 @@
           :total="Number(total) || 0"
           :show-size-changer="true"
 
-          :page-size-options="[10, 20, 50, 100]"
+          :page-size-options="[10, 20, 50, 100, 200, 500]"
           size="small"
           @change="fetchData"
           @showSizeChange="onPageSizeChange"
@@ -275,9 +275,10 @@ const tablePagination = false;
 
 // Flatten fields into row for dynamic column display
 const displayRows = computed(() => {
-  return rows.value.map(r => ({
+  return rows.value.map((r, i) => ({
     ...r,
     ...(r.fields || {}),
+    _rowIndex: (filters.page - 1) * filters.pageSize + i + 1,
   }));
 });
 
@@ -308,6 +309,15 @@ const typeLabel = computed(() => currentModule.value?.name || TYPE_LABEL[filters
 
 const dynamicColumns = computed(() => {
   const base = [];
+  // 序号列：统计当前页数据总数
+  base.push({
+    title: '序号',
+    dataIndex: '_rowIndex',
+    key: '_rowIndex',
+    width: 60,
+    ellipsis: false,
+    sorter: false,
+  });
   for (const field of currentFields.value) {
     base.push({
       title: field.name || field.code,

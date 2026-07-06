@@ -7,7 +7,7 @@ export function getConnection() {
 
 export async function search(moduleCode, { keyword, fieldFilters = {}, page = 1, pageSize = 20, sortField, sortDir, allowedSortFields = [] } = {}) {
   const safePage = Math.max(1, Number(page) || 1);
-  const safeSize = Math.min(200, Math.max(1, Number(pageSize) || 20));
+  const safeSize = Math.min(10000, Math.max(1, Number(pageSize) || 20));
   const offset = (safePage - 1) * safeSize;
 
   let where = "WHERE module_code = ?";
