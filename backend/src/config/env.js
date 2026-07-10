@@ -10,10 +10,15 @@ if (nodeEnv === "production" && !jwtSecret) {
   throw new Error("JWT_SECRET must be configured in production");
 }
 
+const corsOrigin = process.env.CORS_ORIGIN || "http://127.0.0.1:5173";
+if (nodeEnv === "production" && corsOrigin.includes("127.0.0.1")) {
+  console.warn("[warn] CORS_ORIGIN is set to localhost in production mode. Login requests from external browsers may be blocked by CORS policy.");
+}
+
 export const env = {
   nodeEnv,
   port: Number(process.env.PORT || 3001),
-  corsOrigin: process.env.CORS_ORIGIN || "http://127.0.0.1:5173",
+  corsOrigin,
   jwtSecret,
   pdf: {
     cjkFontPath: process.env.PDF_CJK_FONT_PATH || new URL("../../fonts/ArialUnicode.ttf", import.meta.url).pathname,

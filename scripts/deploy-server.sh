@@ -18,6 +18,24 @@ echo "Deploying branch '$BRANCH' to $SERVER_USER@$SERVER_HOST:$SERVER_DIR"
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
 set -e
 cd '$SERVER_DIR'
+
+# 检查 .env 文件是否存在
+if [ ! -f .env ]; then
+  echo 'ERROR: .env file not found on server. Please create it from .env.production.example first.'
+  exit 1
+fi
+
+# 检查 JWT_SECRET 和 CORS_ORIGIN 是否已配置
+if ! grep -q '^JWT_SECRET=.' .env 2>/dev/null || grep -q '^JWT_SECRET=replace_with' .env 2>/dev/null; then
+  echo 'ERROR: JWT_SECRET is not configured in .env. Please generate one with: openssl rand -hex 32'
+  exit 1
+fi
+
+if ! grep -q '^CORS_ORIGIN=.\+' .env 2>/dev/null; then
+  echo 'ERROR: CORS_ORIGIN is not configured in .env. Please set it to your production domain (e.g. https://customprint.icu).'
+  exit 1
+fi
+
 git fetch origin '$BRANCH' 2>/dev/null || true
 git checkout '$BRANCH'
 git pull --ff-only origin '$BRANCH' 2>/dev/null || true

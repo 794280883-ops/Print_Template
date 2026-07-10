@@ -29,11 +29,13 @@ services:
       DB_USER: ${MYSQL_USER:-wms_app}
       DB_PASSWORD: ${MYSQL_PASSWORD:-wms_app_password}
       DB_NAME: ${MYSQL_DATABASE:-wms_print_template}
-      JWT_SECRET: ${JWT_SECRET}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:8080}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必须在 .env 中配置，请参考 .env.production.example}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN 必须在 .env 中配置为生产域名（如 https://customprint.icu），请参考 .env.production.example}
     depends_on:
       mysql:
         condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
     command: sh -c "npm run migrate && npm start"
 
   frontend:
