@@ -203,22 +203,43 @@ export async function generateImportTemplate(bizType) {
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }
 
-export async function exportRecords(bizType) {
+export async function exportRecords(bizType, query = {}) {
   const schema = await compileSchema(bizType);
   const inputFields = getBusinessInputFields(schema);
   const headers = inputFields.map((f) => f.name);
 
-  const result = await recordRepository.search(bizType, {
-    keyword: "",
-    fieldFilters: {},
-    page: 1,
-    pageSize: 10000,
-    sortField: schema.recordCodeField?.code || "",
-    sortDir: "ASC",
-    allowedSortFields: [schema.recordCodeField?.code].filter(Boolean),
-  });
+  const idsParam = query.ids;
+  let ids = [];
+  if (typeof idsParam === "string") {
+    ids = idsParam.split(",").map((v) => Number(v.trim())).filter((v) => v > 0);
+  } else if (Array.isArray(idsParam)) {
+    ids = idsParam.map(Number).filter((v) => v > 0);
+  }
 
-  const dataRows = (result.rows || []).map((row) =>
+  let rows;
+  if (ids.length) {
+    rows = await recordRepository.getByIds(ids);
+  } else {
+    const keyword = String(query.keyword || "").trim();
+    let fieldFilters = query.fieldFilters;
+    if (typeof fieldFilters === "string") {
+      try { fieldFilters = JSON.parse(fieldFilters); } catch { fieldFilters = {}; }
+    }
+    if (!fieldFilters || typeof fieldFilters !== "object") fieldFilters = {};
+
+    const result = await recordRepository.search(bizType, {
+      keyword,
+      fieldFilters,
+      page: 1,
+      pageSize: 10000,
+      sortField: schema.recordCodeField?.code || "",
+      sortDir: "ASC",
+      allowedSortFields: [schema.recordCodeField?.code].filter(Boolean),
+    });
+    rows = result.rows || [];
+  }
+
+  const dataRows = rows.map((row) =>
     inputFields.map((f) => {
       const v = row.fields?.[f.code];
       return v !== undefined && v !== null ? String(v) : "";

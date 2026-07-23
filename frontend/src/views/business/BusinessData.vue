@@ -475,7 +475,13 @@ async function downloadImportTemplate() {
 async function handleExport() {
   try {
     message.loading('正在导出...', 0);
-    await exportBusinessData(filters.type);
+    const params = selectedRowKeys.value.length
+      ? { ids: selectedRowKeys.value.join(",") }
+      : {
+          keyword: filters.keyword || undefined,
+          fieldFilters: Object.keys(fieldFilters).length ? { ...fieldFilters } : undefined,
+        };
+    await exportBusinessData(filters.type, params);
     message.destroy();
     message.success('导出成功');
   } catch (e) {

@@ -95,6 +95,16 @@ export async function getById(dbId, conn = pool) {
   return rows[0] ? toDto(rows[0]) : null;
 }
 
+export async function getByIds(ids = []) {
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  const [rows] = await pool.query(
+    `SELECT * FROM business_record WHERE id IN (${placeholders})`,
+    ids,
+  );
+  return rows.map(toDto);
+}
+
 export async function updateById(dbId, { recordCode, recordData, searchText }, conn = pool) {
   await conn.query(
     `UPDATE business_record
