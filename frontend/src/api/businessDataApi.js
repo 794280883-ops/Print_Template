@@ -49,3 +49,12 @@ export async function importBusinessData(bizType, file) {
   });
   return response.json();
 }
+
+export async function exportBusinessData(bizType) {
+  const store = usePermissionStore();
+  await downloadAuthenticatedBlob(
+    `/business-data/export/${encodeURIComponent(bizType)}`,
+    `${bizType}_业务数据.xlsx`,
+    { apiBaseUrl: API_BASE_URL, token: store.getToken() },
+  );
+}

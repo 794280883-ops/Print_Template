@@ -1,4 +1,5 @@
 import * as recordService from "../services/recordService.js";
+import { compileSchema } from "../services/schemaService.js";
 import { appError, sendSuccess } from "../utils/response.js";
 
 export async function types(req, res) {
@@ -36,4 +37,14 @@ export async function downloadTemplate(req, res) {
 export async function importData(req, res) {
   if (!req.file) throw appError("请上传 Excel 文件", 40000, 400);
   sendSuccess(res, await recordService.importRecords(req.params.bizType, req.file.buffer));
+}
+
+export async function exportRecords(req, res) {
+  const schema = await compileSchema(req.params.bizType);
+  const buffer = await recordService.exportRecords(req.params.bizType);
+  const label = schema.module?.label || schema.module?.name || req.params.bizType;
+  const filename = encodeURIComponent(`${label}_业务数据.xlsx`);
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
 }

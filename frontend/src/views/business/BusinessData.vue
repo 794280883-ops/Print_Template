@@ -43,6 +43,9 @@
         <a-button @click="handleImport" v-permission="'business:import'">
           <upload-outlined /> 导入
         </a-button>
+        <a-button @click="handleExport" v-permission="'business:view'">
+          <download-outlined /> 导出
+        </a-button>
         <a-button @click="handleBatchPrint" :disabled="!selectedRowKeys.length" v-permission="'business:print'">
           <printer-outlined /> 打印 {{ selectedRowKeys.length ? `(${selectedRowKeys.length})` : '' }}
         </a-button>
@@ -212,7 +215,7 @@
 import { ref, reactive, computed, onMounted, onActivated, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { SearchOutlined, PlusOutlined, UploadOutlined, PrinterOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue';
-import { listBusinessData, deleteBusinessDataBatch, updateBusinessData, createBusinessData, importBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
+import { listBusinessData, deleteBusinessDataBatch, updateBusinessData, createBusinessData, importBusinessData, exportBusinessData, downloadImportTemplate as downloadImportTemplateApi } from '../../api/businessDataApi.js';
 import { usePermissionStore } from '../../stores/permission.js';
 
 const { hasPermission } = usePermissionStore();
@@ -467,6 +470,17 @@ async function downloadImportTemplate() {
     await downloadImportTemplateApi(filters.type);
   } catch (e) {
     message.error('下载失败: ' + (e.message || ''));
+  }
+}
+async function handleExport() {
+  try {
+    message.loading('正在导出...', 0);
+    await exportBusinessData(filters.type);
+    message.destroy();
+    message.success('导出成功');
+  } catch (e) {
+    message.destroy();
+    message.error('导出失败: ' + (e.message || ''));
   }
 }
 async function handleBatchPrint() {

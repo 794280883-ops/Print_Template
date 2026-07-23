@@ -203,6 +203,35 @@ export async function generateImportTemplate(bizType) {
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }
 
+export async function exportRecords(bizType) {
+  const schema = await compileSchema(bizType);
+  const inputFields = getBusinessInputFields(schema);
+  const headers = inputFields.map((f) => f.name);
+
+  const result = await recordRepository.search(bizType, {
+    keyword: "",
+    fieldFilters: {},
+    page: 1,
+    pageSize: 100000,
+    sortField: schema.recordCodeField?.code || "",
+    sortDir: "ASC",
+    allowedSortFields: [schema.recordCodeField?.code].filter(Boolean),
+  });
+
+  const dataRows = (result.rows || []).map((row) =>
+    inputFields.map((f) => {
+      const v = row.fields?.[f.code];
+      return v !== undefined && v !== null ? String(v) : "";
+    }),
+  );
+
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+  worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, schema.module.label);
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+}
+
 export async function importRecords(bizType, fileBuffer) {
   const schema = await compileSchema(bizType);
   const workbook = XLSX.read(fileBuffer, { type: "buffer" });

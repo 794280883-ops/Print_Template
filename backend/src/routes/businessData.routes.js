@@ -10,6 +10,7 @@ export const businessDataRouter = Router();
 
 businessDataRouter.get("/business-data/types", requirePermission("business:view"), asyncHandler(ctrl.types));
 businessDataRouter.get("/business-data/search", requirePermission("business:view"), asyncHandler(ctrl.search));
+businessDataRouter.get("/business-data/export/:bizType", requirePermission("business:view"), asyncHandler(ctrl.exportRecords));
 businessDataRouter.get("/business-data/template/:bizType", requirePermission("business:import"), asyncHandler(ctrl.downloadTemplate));
 businessDataRouter.post("/business-data/import/:bizType", requirePermission("business:import"), upload.single("file"), asyncHandler(ctrl.importData));
 businessDataRouter.post("/business-data", requirePermission("business:create"), asyncHandler(ctrl.create));
