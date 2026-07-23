@@ -212,7 +212,7 @@ export async function exportRecords(bizType) {
     keyword: "",
     fieldFilters: {},
     page: 1,
-    pageSize: 100000,
+    pageSize: 10000,
     sortField: schema.recordCodeField?.code || "",
     sortDir: "ASC",
     allowedSortFields: [schema.recordCodeField?.code].filter(Boolean),
