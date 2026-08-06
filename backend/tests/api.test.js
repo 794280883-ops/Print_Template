@@ -143,6 +143,47 @@ test("protected template APIs require login and permission", async () => {
   }
 });
 
+test("GET /api/v1/business-modules allows users with business:view permission", async () => {
+  const server = await listen(createApp());
+  const suffix = Date.now().toString(36);
+  const username = `business_view_${suffix}`;
+  const roleCode = `business_view_${suffix}`;
+  let roleId;
+  try {
+    const [roleResult] = await pool.query(
+      "INSERT INTO sys_role (code, name) VALUES (?, ?)",
+      [roleCode, "业务数据查看测试角色"],
+    );
+    roleId = roleResult.insertId;
+    const [[businessViewMenu]] = await pool.query(
+      "SELECT id FROM sys_menu WHERE permission_code = 'business:view' LIMIT 1",
+    );
+    await pool.query("INSERT INTO sys_role_menu (role_id, menu_id) VALUES (?, ?)", [roleId, businessViewMenu.id]);
+
+    await createNoRoleUser(username);
+    const [[user]] = await pool.query("SELECT id FROM sys_user WHERE username = ?", [username]);
+    await pool.query("INSERT INTO sys_user_role (user_id, role_id) VALUES (?, ?)", [user.id, roleId]);
+
+    const port = server.address().port;
+    const token = await login(port, username);
+    const response = await rawFetch(`http://127.0.0.1:${port}/api/v1/business-modules`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.code, 0);
+    assert.ok(Array.isArray(body.data));
+  } finally {
+    await pool.query("DELETE FROM sys_user_role WHERE user_id IN (SELECT id FROM sys_user WHERE username = ?)", [username]);
+    await pool.query("DELETE FROM sys_user WHERE username = ?", [username]);
+    if (roleId) {
+      await pool.query("DELETE FROM sys_role_menu WHERE role_id = ?", [roleId]);
+      await pool.query("DELETE FROM sys_role WHERE id = ?", [roleId]);
+    }
+    await closeServer(server);
+  }
+});
+
 test("GET /api/v1/template/fields/location returns field dictionary", async () => {
   const server = await listen(createApp());
   try {

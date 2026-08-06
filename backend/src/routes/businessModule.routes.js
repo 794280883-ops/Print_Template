@@ -5,7 +5,7 @@ import { requirePermission } from "../middlewares/auth.js";
 
 export const businessModuleRouter = Router();
 
-businessModuleRouter.get("/business-modules", requirePermission("field:view"), asyncHandler(businessModuleController.listModules));
+businessModuleRouter.get("/business-modules", requirePermission(["field:view", "business:view"]), asyncHandler(businessModuleController.listModules));
 businessModuleRouter.post("/business-modules", requirePermission("field:module:create"), asyncHandler(businessModuleController.createModule));
 businessModuleRouter.put("/business-modules/:moduleCode", requirePermission("field:module:edit"), asyncHandler(businessModuleController.updateModule));
 businessModuleRouter.delete("/business-modules/:moduleCode", requirePermission("field:module:delete"), asyncHandler(businessModuleController.deleteModule));
